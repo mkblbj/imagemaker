@@ -16,6 +16,7 @@ from helpers import (
 from productflow_backend.application.contracts import (
     PosterGenerationInput,
 )
+from productflow_backend.application.product_workflow_dependencies import WorkflowExecutionDependencies
 from productflow_backend.domain.enums import (
     PosterKind,
 )
@@ -495,9 +496,11 @@ def test_image_generation_fills_multiple_targets_with_concurrent_provider_calls(
         provider_factory_thread_ids.append(threading.get_ident())
         return fake_provider
 
-    monkeypatch.setattr(
-        "productflow_backend.application.product_workflows.get_image_provider",
-        fake_provider_factory,
+    _execute_workflow_queue_inline(
+        monkeypatch,
+        dependencies=WorkflowExecutionDependencies(
+            image_provider_resolver=fake_provider_factory,
+        ),
     )
 
     app = create_app()

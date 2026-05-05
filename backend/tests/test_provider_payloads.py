@@ -23,6 +23,7 @@ from productflow_backend.application.contracts import (
     ProductInput,
     ReferenceImageInput,
 )
+from productflow_backend.application.product_workflow_dependencies import WorkflowExecutionDependencies
 from productflow_backend.application.product_workflows import run_product_workflow
 from productflow_backend.application.use_cases import (
     create_product,
@@ -263,9 +264,11 @@ def test_product_workflow_copy_run_normalizes_provider_scalar_lists(configured_e
                 "list-audience-copy",
             )
 
-    monkeypatch.setattr(
-        "productflow_backend.application.product_workflows.get_text_provider",
-        lambda: ListAudienceTextProvider(),
+    _execute_workflow_queue_inline(
+        monkeypatch,
+        dependencies=WorkflowExecutionDependencies(
+            text_provider_resolver=lambda: ListAudienceTextProvider(),
+        ),
     )
 
     from productflow_backend.presentation.api import create_app
@@ -376,9 +379,11 @@ def test_image_generation_without_copy_link_uses_image_edit_prompt_mode(
                 "capturing-v1",
             )
 
-    monkeypatch.setattr(
-        "productflow_backend.application.product_workflows.get_image_provider",
-        CapturingImageProvider,
+    _execute_workflow_queue_inline(
+        monkeypatch,
+        dependencies=WorkflowExecutionDependencies(
+            image_provider_resolver=CapturingImageProvider,
+        ),
     )
 
     app = create_app()

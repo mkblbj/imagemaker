@@ -132,30 +132,6 @@ def _call_with_timeout[T](call: Callable[[], T], *, timeout_seconds: float, time
         return result
 
 
-def get_text_provider():
-    """Resolve through the facade so existing test monkeypatch targets keep working."""
-
-    from productflow_backend.application import product_workflows
-
-    return product_workflows.get_text_provider()
-
-
-def get_image_provider():
-    """Resolve through the facade so existing test monkeypatch targets keep working."""
-
-    from productflow_backend.application import product_workflows
-
-    return product_workflows.get_image_provider()
-
-
-def _get_execute_node():
-    """Resolve through the facade so existing test monkeypatch targets keep working."""
-
-    from productflow_backend.application import product_workflows
-
-    return product_workflows._execute_node
-
-
 @dataclass(frozen=True, slots=True)
 class WorkflowRunKickoff:
     workflow: ProductWorkflow
@@ -370,10 +346,7 @@ def _execute_product_workflow_run(
                 node.id,
                 node.node_type.value,
             )
-            if dependencies is None:
-                output = _get_execute_node()(session, workflow_id=workflow.id, node=node)
-            else:
-                output = _execute_node(session, workflow_id=workflow.id, node=node, dependencies=dependencies)
+            output = _execute_node(session, workflow_id=workflow.id, node=node, dependencies=dependencies)
         except TimeLimitExceeded as exc:
             session.rollback()
             _mark_workflow_run_failed(

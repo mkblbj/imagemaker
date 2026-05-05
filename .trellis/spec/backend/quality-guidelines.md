@@ -212,9 +212,9 @@ Routes and use cases call provider interfaces/factories, not concrete SDK classe
 factory, config definitions, tests, and settings UI types together.
 
 Workflow execution has an additional explicit dependency seam in
-`application/product_workflow_dependencies.py`. Default workflow execution dependencies must resolve providers through the
-`application/product_workflows.py` facade so existing route/worker behavior and legacy monkeypatch tests remain compatible,
-while focused tests may pass a `WorkflowExecutionDependencies` instance directly.
+`application/product_workflow_dependencies.py`. Default workflow execution dependencies resolve providers directly through
+the infrastructure provider factories. Tests and future composition code that need fake providers should pass a
+`WorkflowExecutionDependencies` instance directly rather than patching the `product_workflows.py` facade.
 
 #### Scenario: Workflow execution dependency seams
 
@@ -227,8 +227,9 @@ while focused tests may pass a `WorkflowExecutionDependencies` instance directly
   `_execute_node(..., dependencies=None)` accept this seam without changing API/worker call sites.
 
 ##### 3. Contracts
-- `None` uses default facade-routed resolvers.
-- Facade exports such as `product_workflows.get_text_provider` / `get_image_provider` remain monkeypatch-compatible.
+- `None` uses default resolvers that call the infrastructure text/image provider factories.
+- The `product_workflows.py` facade exports public workflow use cases for route/worker imports only; it must not expose
+  provider factory helpers or private `_...` execution helpers as test seams.
 - Custom dependencies may be passed by focused tests or future composition code; they must return provider interface
   instances, not concrete SDK payloads.
 
@@ -238,8 +239,11 @@ while focused tests may pass a `WorkflowExecutionDependencies` instance directly
 
 ##### 5. Good/Base/Bad Cases
 - Good: a focused test injects fake providers through `WorkflowExecutionDependencies`.
-- Base: existing tests monkeypatch `product_workflows.get_image_provider` and still affect default workflow execution.
-- Bad: workflow execution imports a concrete provider SDK class or bypasses the facade default resolver.
+- Base: route/worker code calls public workflow use cases with `dependencies=None`, and execution resolves providers via
+  the infrastructure factories.
+- Bad: tests monkeypatch `product_workflows.get_image_provider`, `product_workflows.get_text_provider`, or
+  `product_workflows._execute_node`.
+- Bad: workflow execution imports a concrete provider SDK class.
 
 ##### 6. Tests Required
 - Keep provider/workflow regression tests passing after resolver changes.
@@ -256,6 +260,19 @@ Correct:
 
 ```python
 provider = dependencies.image_provider()
+```
+
+Wrong:
+
+```python
+monkeypatch.setattr("productflow_backend.application.product_workflows.get_image_provider", fake_factory)
+```
+
+Correct:
+
+```python
+dependencies = WorkflowExecutionDependencies(image_provider_resolver=fake_factory)
+run_product_workflow(session, product_id=product.id, dependencies=dependencies)
 ```
 
 ### Validate inputs at the correct boundary

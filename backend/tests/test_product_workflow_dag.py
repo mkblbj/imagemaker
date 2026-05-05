@@ -18,6 +18,7 @@ from productflow_backend.application.contracts import (
     PosterGenerationInput,
     ProductInput,
 )
+from productflow_backend.application.product_workflow_dependencies import WorkflowExecutionDependencies
 from productflow_backend.domain.enums import (
     CopyStatus,
     PosterKind,
@@ -565,9 +566,11 @@ def test_product_context_source_image_reaches_image_generation_context(
                 "capturing-v1",
             )
 
-    monkeypatch.setattr(
-        "productflow_backend.application.product_workflows.get_image_provider",
-        CapturingImageProvider,
+    _execute_workflow_queue_inline(
+        monkeypatch,
+        dependencies=WorkflowExecutionDependencies(
+            image_provider_resolver=CapturingImageProvider,
+        ),
     )
 
     app = create_app()
@@ -672,9 +675,11 @@ def test_image_generation_collects_product_context_through_upstream_copy_edge(
                 "capturing-v1",
             )
 
-    monkeypatch.setattr(
-        "productflow_backend.application.product_workflows.get_image_provider",
-        CapturingImageProvider,
+    _execute_workflow_queue_inline(
+        monkeypatch,
+        dependencies=WorkflowExecutionDependencies(
+            image_provider_resolver=CapturingImageProvider,
+        ),
     )
 
     app = create_app()
@@ -981,9 +986,11 @@ def test_image_generation_runs_without_product_context_edge(
                 "capturing-v1",
             )
 
-    monkeypatch.setattr(
-        "productflow_backend.application.product_workflows.get_image_provider",
-        CapturingImageProvider,
+    _execute_workflow_queue_inline(
+        monkeypatch,
+        dependencies=WorkflowExecutionDependencies(
+            image_provider_resolver=CapturingImageProvider,
+        ),
     )
 
     app = create_app()
@@ -1132,9 +1139,11 @@ def test_copy_generation_runs_without_product_context_edge(
                 "capturing-copy",
             )
 
-    monkeypatch.setattr(
-        "productflow_backend.application.product_workflows.get_text_provider",
-        lambda: CapturingTextProvider(),
+    _execute_workflow_queue_inline(
+        monkeypatch,
+        dependencies=WorkflowExecutionDependencies(
+            text_provider_resolver=lambda: CapturingTextProvider(),
+        ),
     )
 
     app = create_app()

@@ -37,18 +37,18 @@ def test_workflow_execution_dependencies_use_explicit_resolvers_without_global_f
     assert rendered_paths == [font_path]
 
 
-def test_default_workflow_execution_dependencies_keep_facade_monkeypatch_compatibility(
+def test_default_workflow_execution_dependencies_use_direct_factory_resolvers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     text_provider = object()
     image_provider = object()
 
     monkeypatch.setattr(
-        "productflow_backend.application.product_workflows.get_text_provider",
+        "productflow_backend.application.product_workflow_dependencies.get_text_provider",
         lambda: text_provider,
     )
     monkeypatch.setattr(
-        "productflow_backend.application.product_workflows.get_image_provider",
+        "productflow_backend.application.product_workflow_dependencies.get_image_provider",
         lambda: image_provider,
     )
 

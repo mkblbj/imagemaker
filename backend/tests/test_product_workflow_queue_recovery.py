@@ -267,7 +267,7 @@ def test_duplicate_workflow_messages_noop_for_terminal_or_running_runs(
     )
 
     monkeypatch.setattr(
-        "productflow_backend.application.product_workflows._execute_node",
+        "productflow_backend.application.product_workflow_execution._execute_node",
         lambda *args, **kwargs: pytest.fail("duplicate message must not execute providers"),
     )
 
@@ -453,7 +453,7 @@ def test_workflow_time_limit_exception_marks_running_node_failed(
     def raise_time_limit(*args, **kwargs) -> dict:
         raise TimeLimitExceeded()
 
-    monkeypatch.setattr("productflow_backend.application.product_workflows._execute_node", raise_time_limit)
+    monkeypatch.setattr("productflow_backend.application.product_workflow_execution._execute_node", raise_time_limit)
 
     product = create_product(
         db_session,

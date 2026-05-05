@@ -3,10 +3,14 @@ from __future__ import annotations
 import base64
 import time
 from io import BytesIO
+from typing import TYPE_CHECKING
 
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
+
+if TYPE_CHECKING:
+    from productflow_backend.application.product_workflow_dependencies import WorkflowExecutionDependencies
 
 
 def _make_demo_image_bytes() -> bytes:
@@ -67,10 +71,17 @@ def _wait_for_workflow_run(
     raise AssertionError(f"workflow run did not reach {status or 'any status'}: {last_payload['runs'][:1]}")
 
 
-def _execute_workflow_queue_inline(monkeypatch: pytest.MonkeyPatch) -> None:
+def _execute_workflow_queue_inline(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    dependencies: WorkflowExecutionDependencies | None = None,
+) -> None:
     from productflow_backend.application.product_workflows import execute_product_workflow_run
+
+    def execute_inline(run_id: str) -> None:
+        execute_product_workflow_run(run_id, dependencies=dependencies)
 
     monkeypatch.setattr(
         "productflow_backend.application.product_workflow_execution.enqueue_workflow_run",
-        execute_product_workflow_run,
+        execute_inline,
     )

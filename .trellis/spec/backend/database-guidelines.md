@@ -605,8 +605,10 @@ When adding a runtime setting, update all of these together:
 - API schema/frontend types in `web/src/lib/types.ts` if the value appears in settings UI
 - tests for validation/persistence in `backend/tests/test_auth_settings_runtime_config.py`
 
-`generation_max_concurrent_tasks` is the public-demo global provider/worker admission cap. It is a runtime setting backed
-by `app_settings` and must gate new resource-consuming entrypoints before they enqueue or synchronously call providers.
+`generation_max_concurrent_tasks` is the public-demo global provider/worker running cap. It is a runtime setting backed
+by `app_settings` and must gate worker entry into provider execution or synchronous provider calls. Durable async submit
+paths should still persist queued work and enqueue delivery when the current running count is already at the cap; the cap
+is what makes workers wait, not a reason to reject backlog creation.
 `workflow_image_generation_provider_timeout_seconds` is the workflow AI image provider timeout cap. It is also backed by
 `app_settings` so operators can tune the timeout without redeploying; workflow execution must convert timeout/provider
 failures into safe persisted failure reasons instead of leaking provider details.
@@ -857,7 +859,7 @@ system_prompt = settings.prompt_copy_system
 - Table names are plural snake_case: `products`, `source_assets`, `workflow_runs`, `image_session_rounds`.
 - Foreign key columns end with `_id`: `product_id`, `copy_set_id`, `generated_asset_id`.
 - Unique partial indexes use descriptive names beginning with `uq_`, e.g.
-  `uq_workflow_runs_one_running_per_workflow` and `uq_source_assets_one_original_per_product`.
+  `uq_workflow_node_runs_one_active_per_node` and `uq_source_assets_one_original_per_product`.
 - Foreign key constraint names are explicit only where the project already needs them for cycles or migration stability,
   e.g. `fk_products_current_confirmed_copy_set_id`.
 

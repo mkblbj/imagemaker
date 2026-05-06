@@ -82,6 +82,7 @@ function task(overrides: Partial<ImageSessionGenerationTask>): ImageSessionGener
     provider_notes: [],
     attempts: 0,
     is_retryable: true,
+    is_cancelable: false,
     created_at: createdAt,
     started_at: null,
     finished_at: null,

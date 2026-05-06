@@ -7,6 +7,13 @@ import type {
 } from "../../lib/types";
 import { NODE_STATUS_LABELS } from "./constants";
 
+export interface WorkflowNodeRunActionState {
+  disabled: boolean;
+  pending: boolean;
+  label: string;
+  title: string;
+}
+
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -77,6 +84,49 @@ export function imageWorkflowNodeWaitingLabel(node: WorkflowNode): string {
   return node.status === "queued" ? "生图排队中" : "生图生成中";
 }
 
+export function getWorkflowNodeRunActionState(
+  node: WorkflowNode,
+  {
+    runSubmissionPending,
+    pendingStartNodeId,
+  }: {
+    runSubmissionPending: boolean;
+    pendingStartNodeId: string | null;
+  },
+): WorkflowNodeRunActionState {
+  if (node.status === "queued") {
+    return {
+      disabled: true,
+      pending: true,
+      label: "排队中",
+      title: "该节点已在当前运行中排队",
+    };
+  }
+  if (node.status === "running") {
+    return {
+      disabled: true,
+      pending: true,
+      label: "运行中",
+      title: "该节点正在运行",
+    };
+  }
+  if (runSubmissionPending) {
+    const pendingThisNode = pendingStartNodeId === node.id || pendingStartNodeId === null;
+    return {
+      disabled: true,
+      pending: pendingThisNode,
+      label: pendingThisNode ? "提交中" : "运行",
+      title: pendingThisNode ? "正在提交运行" : "正在提交另一个运行",
+    };
+  }
+  return {
+    disabled: false,
+    pending: false,
+    label: "运行",
+    title: "运行节点",
+  };
+}
+
 export function hasActiveWorkflow(workflow: ProductWorkflow | undefined | null): boolean {
   if (!workflow) {
     return false;
@@ -117,6 +167,14 @@ export function mergeProductWorkflowStatusIntoDetail(
       started_at: run.started_at,
       finished_at: run.finished_at,
       failure_reason: run.failure_reason,
+      is_retryable: run.is_retryable,
+      is_cancelable: run.is_cancelable,
+      queue_active_count: run.queue_active_count,
+      queue_running_count: run.queue_running_count,
+      queue_queued_count: run.queue_queued_count,
+      queue_max_concurrent_tasks: run.queue_max_concurrent_tasks,
+      queued_ahead_count: run.queued_ahead_count,
+      queue_position: run.queue_position,
       node_runs: run.node_runs.map((nodeRun): WorkflowNodeRun => {
         const existingNodeRun = existingNodeRunById.get(nodeRun.id);
         return {

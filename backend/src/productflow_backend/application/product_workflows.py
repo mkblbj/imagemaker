@@ -3,8 +3,10 @@ from __future__ import annotations
 from productflow_backend.application import product_workflow_graph
 from productflow_backend.application.product_workflow_execution import (
     WorkflowRunKickoff,
+    cancel_product_workflow_run,
     execute_product_workflow_run,
     mark_workflow_run_enqueue_failed,
+    retry_product_workflow_run,
     run_product_workflow,
     start_product_workflow_run,
     submit_product_workflow_run,
@@ -34,6 +36,7 @@ def get_product_workflow_status(session, product_id: str) -> product_workflow_gr
 __all__ = [
     "WorkflowRunKickoff",
     "bind_workflow_node_image",
+    "cancel_product_workflow_run",
     "create_workflow_edge",
     "create_workflow_node",
     "delete_workflow_edge",
@@ -43,6 +46,7 @@ __all__ = [
     "get_product_workflow_status",
     "latest_workflow_runs",
     "mark_workflow_run_enqueue_failed",
+    "retry_product_workflow_run",
     "run_product_workflow",
     "start_product_workflow_run",
     "submit_product_workflow_run",

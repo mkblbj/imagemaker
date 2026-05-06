@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from productflow_backend.application.image_sessions import (
     add_image_session_reference_images,
     attach_image_session_asset_to_product,
+    cancel_image_session_generation_task,
     create_image_session,
     delete_image_session,
     delete_image_session_reference_image,
@@ -202,6 +203,26 @@ def retry_image_session_generation_task_endpoint(
 ) -> ImageSessionDetailResponse:
     try:
         image_session = retry_image_session_generation_task(
+            session,
+            image_session_id=image_session_id,
+            task_id=task_id,
+        )
+    except ValueError as exc:
+        raise_value_error_as_http(exc)
+    return serialize_image_session_detail(image_session)
+
+
+@router.post(
+    "/image-sessions/{image_session_id}/generation-tasks/{task_id}/cancel",
+    response_model=ImageSessionDetailResponse,
+)
+def cancel_image_session_generation_task_endpoint(
+    image_session_id: str,
+    task_id: str,
+    session: Session = Depends(get_session),
+) -> ImageSessionDetailResponse:
+    try:
+        image_session = cancel_image_session_generation_task(
             session,
             image_session_id=image_session_id,
             task_id=task_id,

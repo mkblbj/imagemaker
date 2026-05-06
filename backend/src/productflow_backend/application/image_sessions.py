@@ -63,6 +63,7 @@ IMAGE_SESSION_CAPACITY_RETRY_DELAY_MS = 2000
 GENERIC_IMAGE_GENERATION_FAILURE = "图片生成失败，请稍后重试"
 PARTIAL_IMAGE_GENERATION_FAILURE = "已生成 {completed}/{requested} 张候选，后续生成失败，请重新发起生成补齐。"
 PARTIAL_IMAGE_GENERATION_TIMEOUT = "已生成 {completed}/{requested} 张候选，但任务超时，剩余候选未完成。"
+IMAGE_SESSION_CANCELLED_REASON = "已取消"
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +102,10 @@ class ImageSessionGenerationExecutionError(Exception):
     generation_group_id: str | None
     timed_out: bool = False
     safe_reason: str | None = None
+
+
+class ImageSessionGenerationCancelledError(Exception):
+    """Raised inside worker execution when durable cancellation is observed."""
 
 
 def _image_session_query():
@@ -529,6 +534,7 @@ def _execute_image_session_round_generation(
     for candidate_index in range(completed_candidates + 1, generation_count + 1):
         relative_path: str | None = None
         try:
+            _raise_if_image_generation_task_cancelled(session, generation_task_id)
             if generation_task_id is not None:
                 _update_image_generation_task_progress(
                     session,
@@ -544,6 +550,7 @@ def _execute_image_session_round_generation(
                     },
                     clear_provider_response=True,
                 )
+            _raise_if_image_generation_task_cancelled(session, generation_task_id)
             result = service.generate(
                 prompt=prompt,
                 size=normalized_size,
@@ -560,12 +567,14 @@ def _execute_image_session_round_generation(
                     completed_candidates=completed_candidates,
                 ),
             )
+            _raise_if_image_generation_task_cancelled(session, generation_task_id)
 
             relative_path = storage.save_image_session_generated(
                 image_session.id,
                 result.bytes_data,
                 suffix=infer_extension(result.mime_type),
             )
+            _raise_if_image_generation_task_cancelled(session, generation_task_id)
             asset = ImageSessionAsset(
                 session_id=image_session.id,
                 kind=ImageSessionAssetKind.GENERATED_IMAGE,
@@ -648,6 +657,8 @@ def _execute_image_session_round_generation(
             if relative_path is not None:
                 with suppress(ValueError, OSError):
                     storage.delete_image_with_variants(relative_path)
+            if isinstance(exc, ImageSessionGenerationCancelledError):
+                raise
             if isinstance(exc, (KeyboardInterrupt, SystemExit)):
                 raise
             if generation_task_id is None:
@@ -809,6 +820,38 @@ def retry_image_session_generation_task(
     return get_image_session_detail(session, image_session_id)
 
 
+def cancel_image_session_generation_task(
+    session: Session,
+    *,
+    image_session_id: str,
+    task_id: str,
+) -> ImageSession:
+    _get_image_session_or_raise(session, image_session_id)
+    task = session.scalar(
+        select(ImageSessionGenerationTask).where(
+            ImageSessionGenerationTask.id == task_id,
+            ImageSessionGenerationTask.session_id == image_session_id,
+        )
+    )
+    if task is None:
+        raise NotFoundError("生成任务不存在")
+    if task.status == JobStatus.CANCELLED:
+        return get_image_session_detail(session, image_session_id)
+    if task.status in {JobStatus.SUCCEEDED, JobStatus.FAILED}:
+        raise BusinessValidationError("已结束的生成任务不能取消")
+
+    _finish_image_generation_task(
+        session,
+        task=task,
+        status=JobStatus.CANCELLED,
+        failure_reason=IMAGE_SESSION_CANCELLED_REASON,
+        result_generation_group_id=task.result_generation_group_id,
+        is_retryable=False,
+    )
+    session.expire_all()
+    return get_image_session_detail(session, image_session_id)
+
+
 def mark_image_session_generation_task_enqueue_failed(session: Session, *, task_id: str, reason: str) -> None:
     task = session.get(ImageSessionGenerationTask, task_id)
     if task is None:
@@ -886,7 +929,12 @@ def _finish_image_generation_task(
     task.finished_at = now
     task.active_candidate_index = None
     task.progress_updated_at = now
-    task.progress_phase = "succeeded" if status == JobStatus.SUCCEEDED else "failed"
+    if status == JobStatus.SUCCEEDED:
+        task.progress_phase = "succeeded"
+    elif status == JobStatus.CANCELLED:
+        task.progress_phase = "cancelled"
+    else:
+        task.progress_phase = "failed"
     _touch_image_session_if_present(session, task.session_id, now=now)
     session.commit()
 
@@ -906,6 +954,8 @@ def _update_image_generation_task_progress(
     commit: bool = True,
 ) -> None:
     task = session.get(ImageSessionGenerationTask, task_id)
+    if task is not None:
+        session.refresh(task, attribute_names=["status"])
     if task is None or not IMAGE_SESSION_GENERATION_TASK_CONTRACT.is_active(task.status):
         return
     task.progress_phase = phase[:64]
@@ -967,6 +1017,16 @@ def _provider_progress_callback(
     return callback
 
 
+def _raise_if_image_generation_task_cancelled(session: Session, task_id: str | None) -> None:
+    if task_id is None:
+        return
+    status_value = session.scalar(
+        select(ImageSessionGenerationTask.status).where(ImageSessionGenerationTask.id == task_id)
+    )
+    if status_value == JobStatus.CANCELLED:
+        raise ImageSessionGenerationCancelledError()
+
+
 def _mark_image_generation_task_running(
     session: Session,
     task: ImageSessionGenerationTask,
@@ -1021,6 +1081,9 @@ def _mark_image_generation_task_failed(session: Session, *, task_id: str, reason
     task = session.get(ImageSessionGenerationTask, task_id)
     if task is None:
         return
+    session.refresh(task, attribute_names=["status"])
+    if IMAGE_SESSION_GENERATION_TASK_CONTRACT.is_terminal(task.status):
+        return
     _finish_image_generation_task(
         session,
         task=task,
@@ -1039,6 +1102,9 @@ def _handle_image_generation_task_failure(
 ) -> None:
     task = session.get(ImageSessionGenerationTask, task_id)
     if task is None:
+        return
+    session.refresh(task, attribute_names=["status"])
+    if IMAGE_SESSION_GENERATION_TASK_CONTRACT.is_terminal(task.status):
         return
     if task.attempts < IMAGE_SESSION_GENERATION_MAX_ATTEMPTS:
         _reset_image_generation_task_for_retry(
@@ -1138,7 +1204,10 @@ def execute_image_session_generation_task(task_id: str) -> None:
                     task_id=task.id,
                     reason=reason,
                     result_generation_group_id=exc.generation_group_id,
-                )
+            )
+            return
+        except ImageSessionGenerationCancelledError:
+            session.rollback()
             return
         except BaseException as exc:  # noqa: BLE001
             if isinstance(exc, (KeyboardInterrupt, SystemExit)):

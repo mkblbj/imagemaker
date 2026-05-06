@@ -131,6 +131,14 @@ def test_product_workflow_status_endpoint_returns_lightweight_state(configured_e
         "started_at",
         "finished_at",
         "failure_reason",
+        "is_retryable",
+        "is_cancelable",
+        "queue_active_count",
+        "queue_running_count",
+        "queue_queued_count",
+        "queue_max_concurrent_tasks",
+        "queued_ahead_count",
+        "queue_position",
         "node_runs",
     }
     assert run_status_payload["runs"][0]["status"] == "succeeded"

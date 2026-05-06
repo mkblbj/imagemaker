@@ -75,6 +75,14 @@ class WorkflowRunResponse(BaseModel):
     started_at: datetime
     finished_at: datetime | None = None
     failure_reason: str | None = None
+    is_retryable: bool
+    is_cancelable: bool
+    queue_active_count: int
+    queue_running_count: int
+    queue_queued_count: int
+    queue_max_concurrent_tasks: int
+    queued_ahead_count: int | None = None
+    queue_position: int | None = None
     node_runs: list[WorkflowNodeRunResponse]
 
 
@@ -85,6 +93,14 @@ class WorkflowRunStatusResponse(BaseModel):
     started_at: datetime
     finished_at: datetime | None = None
     failure_reason: str | None = None
+    is_retryable: bool
+    is_cancelable: bool
+    queue_active_count: int
+    queue_running_count: int
+    queue_queued_count: int
+    queue_max_concurrent_tasks: int
+    queued_ahead_count: int | None = None
+    queue_position: int | None = None
     node_runs: list[WorkflowNodeRunStatusResponse]
 
 
@@ -159,6 +175,27 @@ class RunWorkflowRequest(BaseModel):
     start_node_id: str | None = None
 
 
+def workflow_run_is_retryable(run: WorkflowRun) -> bool:
+    return run.status == WorkflowRunStatus.FAILED
+
+
+def workflow_run_is_cancelable(run: WorkflowRun) -> bool:
+    return WORKFLOW_RUN_GENERATION_TASK_CONTRACT.is_active(run.status)
+
+
+def workflow_run_queue_fields(run: WorkflowRun) -> dict[str, int | None]:
+    queue_metadata = getattr(run, "_queue_metadata", None)
+    queue_overview = getattr(queue_metadata, "overview", None)
+    return {
+        "queue_active_count": getattr(queue_overview, "active_count", 0),
+        "queue_running_count": getattr(queue_overview, "running_count", 0),
+        "queue_queued_count": getattr(queue_overview, "queued_count", 0),
+        "queue_max_concurrent_tasks": getattr(queue_overview, "max_concurrent_tasks", 0),
+        "queued_ahead_count": getattr(queue_metadata, "queued_ahead_count", None),
+        "queue_position": getattr(queue_metadata, "queue_position", None),
+    }
+
+
 def serialize_workflow_node(node: WorkflowNode) -> WorkflowNodeResponse:
     return WorkflowNodeResponse(
         id=node.id,
@@ -226,6 +263,9 @@ def serialize_workflow_run(run: WorkflowRun) -> WorkflowRunResponse:
         started_at=run.started_at,
         finished_at=run.finished_at,
         failure_reason=run.failure_reason,
+        is_retryable=workflow_run_is_retryable(run),
+        is_cancelable=workflow_run_is_cancelable(run),
+        **workflow_run_queue_fields(run),
         node_runs=[serialize_workflow_node_run(item) for item in node_runs],
     )
 
@@ -239,6 +279,9 @@ def serialize_workflow_run_status(run: WorkflowRun) -> WorkflowRunStatusResponse
         started_at=run.started_at,
         finished_at=run.finished_at,
         failure_reason=run.failure_reason,
+        is_retryable=workflow_run_is_retryable(run),
+        is_cancelable=workflow_run_is_cancelable(run),
+        **workflow_run_queue_fields(run),
         node_runs=[serialize_workflow_node_run_status(item) for item in node_runs],
     )
 

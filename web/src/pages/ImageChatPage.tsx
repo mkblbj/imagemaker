@@ -11,6 +11,7 @@ import {
   Layers3,
   Loader2,
   MessagesSquare,
+  OctagonX,
   Pencil,
   Plus,
   RotateCcw,
@@ -56,6 +57,7 @@ import {
   compactImageToolOptions,
   findImageHistoryPlaceholder,
   isImageSessionGenerationTaskActive,
+  isImageSessionGenerationTaskCancelable,
   isImageSessionGenerationTaskRetryable,
   mergeImageSessionStatusIntoDetail,
   pruneSelectedReferenceIds,
@@ -153,6 +155,9 @@ function placeholderStatusLabel(candidate: ImageHistoryPlaceholderCandidate) {
   if (candidate.status === "failed") {
     return "生成失败";
   }
+  if (candidate.status === "cancelled") {
+    return "已取消";
+  }
   return "已完成";
 }
 
@@ -165,6 +170,9 @@ function placeholderStatusClass(candidate: ImageHistoryPlaceholderCandidate) {
   }
   if (candidate.status === "completed") {
     return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
+  if (candidate.status === "cancelled") {
+    return "border-slate-200 bg-slate-50 text-slate-600";
   }
   return "border-indigo-200 bg-indigo-50 text-indigo-700";
 }
@@ -600,6 +608,21 @@ export function ImageChatPage() {
     },
   });
 
+  const cancelGenerationTaskMutation = useMutation({
+    mutationFn: (input: { sessionId: string; taskId: string }) =>
+      api.cancelImageSessionGenerationTask(input.sessionId, input.taskId),
+    onSuccess: (updated, input) => {
+      queryClient.setQueryData(["image-session", updated.id], updated);
+      void queryClient.invalidateQueries({ queryKey: ["image-session-status", updated.id] });
+      void queryClient.invalidateQueries({ queryKey: ["image-sessions", productId ?? "standalone"] });
+      setSuccessMessage("已取消生成任务");
+      setErrorMessage("");
+    },
+    onError: (error) => {
+      setErrorMessage(error instanceof ApiError ? error.detail : "取消失败");
+    },
+  });
+
   const generateDisabled =
     !selectedSessionId || !imageSession || !draft.trim() || generateMutation.isPending || Boolean(baseRequirementMessage);
 
@@ -694,6 +717,17 @@ export function ImageChatPage() {
     }
     pendingGeneratedRoundCountRef.current = imageSession?.rounds.length ?? 0;
     retryGenerationTaskMutation.mutate({ sessionId: selectedSessionId, taskId: task.id });
+  }
+
+  function handleCancelGenerationTask(task: ImageSessionGenerationTask) {
+    if (
+      !selectedSessionId ||
+      cancelGenerationTaskMutation.isPending ||
+      !isImageSessionGenerationTaskCancelable(task)
+    ) {
+      return;
+    }
+    cancelGenerationTaskMutation.mutate({ sessionId: selectedSessionId, taskId: task.id });
   }
 
   function handleRename() {
@@ -1038,7 +1072,12 @@ export function ImageChatPage() {
                     retryGenerationTaskMutation.isPending &&
                     retryGenerationTaskMutation.variables?.taskId === selectedPlaceholder.task_id
                   }
+                  cancelling={
+                    cancelGenerationTaskMutation.isPending &&
+                    cancelGenerationTaskMutation.variables?.taskId === selectedPlaceholder.task_id
+                  }
                   onRetry={handleRetryGenerationTask}
+                  onCancel={handleCancelGenerationTask}
                 />
               ) : (
                 <div className="relative z-0 flex flex-col items-center gap-4 text-center text-slate-400">
@@ -1292,14 +1331,19 @@ export function ImageChatPage() {
 function GenerationCanvasPlaceholder({
   candidate,
   retrying,
+  cancelling,
   onRetry,
+  onCancel,
 }: {
   candidate: ImageHistoryPlaceholderCandidate;
   retrying: boolean;
+  cancelling: boolean;
   onRetry: (task: ImageSessionGenerationTask) => void;
+  onCancel: (task: ImageSessionGenerationTask) => void;
 }) {
   const active = candidate.status === "queued" || candidate.status === "running";
   const failed = candidate.status === "failed";
+  const cancelled = candidate.status === "cancelled";
   const retryable = isImageSessionGenerationTaskRetryable(candidate.task);
   const queueText = generationTaskQueueText(candidate.task);
 
@@ -1320,6 +1364,17 @@ function GenerationCanvasPlaceholder({
         </div>
         {queueText ? <div className="mt-3 max-w-sm text-xs leading-5 text-slate-500">{queueText}</div> : null}
         <div className="mt-4 line-clamp-3 max-w-sm text-xs leading-5 text-slate-600">{candidate.prompt}</div>
+        {isImageSessionGenerationTaskCancelable(candidate.task) ? (
+          <button
+            type="button"
+            onClick={() => onCancel(candidate.task)}
+            disabled={cancelling}
+            className="mt-5 inline-flex items-center justify-center rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-600 shadow-sm transition-colors hover:bg-red-50 disabled:opacity-60"
+          >
+            {cancelling ? <Loader2 size={15} className="mr-2 animate-spin" /> : <OctagonX size={15} className="mr-2" />}
+            取消生成
+          </button>
+        ) : null}
         {failed && retryable ? (
           <button
             type="button"
@@ -1333,6 +1388,10 @@ function GenerationCanvasPlaceholder({
         ) : failed ? (
           <div className="mt-5 rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-medium text-red-500">
             该失败任务不可重试
+          </div>
+        ) : cancelled ? (
+          <div className="mt-5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-500">
+            任务已取消
           </div>
         ) : null}
       </div>

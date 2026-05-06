@@ -141,6 +141,7 @@ def test_image_session_generate_returns_queued_task_without_waiting_for_provider
     assert task["progress_metadata"] is None
     assert task["attempts"] == 0
     assert task["is_retryable"] is True
+    assert task["is_cancelable"] is True
     assert task["queue_active_count"] == 1
     assert task["queue_running_count"] == 0
     assert task["queue_queued_count"] == 1
@@ -241,6 +242,7 @@ def test_image_session_status_returns_lightweight_task_snapshot(
     assert queued_payload["generation_tasks"][0]["status"] == "queued"
     assert queued_payload["generation_tasks"][0]["attempts"] == 0
     assert queued_payload["generation_tasks"][0]["is_retryable"] is True
+    assert queued_payload["generation_tasks"][0]["is_cancelable"] is True
     assert queued_payload["generation_tasks"][0]["queue_position"] == 1
     assert sent == [task_id]
 
@@ -257,6 +259,7 @@ def test_image_session_status_returns_lightweight_task_snapshot(
     assert completed_payload["generation_tasks"][0]["completed_candidates"] == 1
     assert completed_payload["generation_tasks"][0]["attempts"] == 1
     assert completed_payload["generation_tasks"][0]["is_retryable"] is False
+    assert completed_payload["generation_tasks"][0]["is_cancelable"] is False
     assert completed_payload["generation_tasks"][0]["progress_phase"] == "succeeded"
     assert completed_payload["generation_tasks"][0]["progress_updated_at"] is not None
     assert completed_payload["generation_tasks"][0]["result_generation_group_id"] == completed_payload[
@@ -489,6 +492,234 @@ def test_image_session_manual_retry_resets_failed_task_and_enqueues(
     assert task.failure_reason is None
     assert task.finished_at is None
     assert task.is_retryable is True
+
+
+def test_image_session_manual_cancel_marks_active_task_cancelled_and_worker_noops(
+    configured_env: Path,
+    db_session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from productflow_backend.application.image_sessions import execute_image_session_generation_task
+    from productflow_backend.domain.enums import JobStatus
+    from productflow_backend.presentation.api import create_app
+
+    monkeypatch.setattr(
+        "productflow_backend.application.image_sessions.enqueue_image_session_generation_task",
+        lambda task_id: None,
+    )
+    monkeypatch.setattr(
+        "productflow_backend.application.image_sessions._execute_image_session_round_generation",
+        lambda *args, **kwargs: pytest.fail("cancelled image session task must no-op"),
+    )
+    app = create_app()
+    client = TestClient(app)
+    _login(client)
+
+    created = client.post("/api/image-sessions", json={"title": "取消生成任务"})
+    assert created.status_code == 201
+    session_id = created.json()["id"]
+    submitted = client.post(
+        f"/api/image-sessions/{session_id}/generate",
+        json={"prompt": "先提交再取消", "size": "1024x1024"},
+    )
+    assert submitted.status_code == 202
+    task_id = submitted.json()["generation_tasks"][0]["id"]
+
+    cancelled = client.post(f"/api/image-sessions/{session_id}/generation-tasks/{task_id}/cancel")
+    assert cancelled.status_code == 200
+    task_payload = cancelled.json()["generation_tasks"][0]
+    assert task_payload["id"] == task_id
+    assert task_payload["status"] == "cancelled"
+    assert task_payload["failure_reason"] == "已取消"
+    assert task_payload["progress_phase"] == "cancelled"
+    assert task_payload["is_retryable"] is False
+    assert task_payload["is_cancelable"] is False
+
+    execute_image_session_generation_task(task_id)
+    db_session.expire_all()
+    task = db_session.get(ImageSessionGenerationTask, task_id)
+    assert task is not None
+    assert task.status == JobStatus.CANCELLED
+    assert task.finished_at is not None
+    assert task.is_retryable is False
+
+
+def test_image_session_generation_cancel_after_file_save_does_not_persist_round_or_asset(
+    configured_env: Path,
+    db_session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from productflow_backend.application.image_sessions import (
+        IMAGE_SESSION_CANCELLED_REASON,
+        ImageSessionGenerationCancelledError,
+        _execute_image_session_round_generation,
+        create_image_session,
+        create_image_session_generation_task,
+    )
+    from productflow_backend.domain.enums import JobStatus
+    from productflow_backend.infrastructure.image.chat_service import GeneratedChatImage
+    from productflow_backend.infrastructure.storage import LocalStorage
+
+    def generate_success(self, **kwargs) -> GeneratedChatImage:
+        return GeneratedChatImage(
+            bytes_data=_make_demo_image_bytes_with_size(1024, 1024),
+            mime_type="image/png",
+            model_name="mock-image-chat-v1",
+            provider_name="mock",
+            prompt_version="test-v1",
+            size=kwargs["size"],
+            generated_at=datetime.now(UTC),
+            provider_request_json={"size": kwargs["size"]},
+            provider_output_json={},
+        )
+
+    class CancellingStorage:
+        def __init__(self) -> None:
+            self.inner = LocalStorage()
+            self.saved_relative_path: str | None = None
+
+        def __getattr__(self, name: str):
+            return getattr(self.inner, name)
+
+        def save_image_session_generated(self, session_id: str, content: bytes, suffix: str = ".png") -> str:
+            relative_path = self.inner.save_image_session_generated(session_id, content, suffix=suffix)
+            self.saved_relative_path = relative_path
+            task = db_session.get(ImageSessionGenerationTask, task_id)
+            assert task is not None
+            task.status = JobStatus.CANCELLED
+            task.failure_reason = IMAGE_SESSION_CANCELLED_REASON
+            task.finished_at = datetime.now(UTC)
+            task.progress_phase = "cancelled"
+            task.progress_updated_at = datetime.now(UTC)
+            task.is_retryable = False
+            db_session.commit()
+            return relative_path
+
+    monkeypatch.setattr(
+        "productflow_backend.infrastructure.image.chat_service.ImageChatService.generate",
+        generate_success,
+    )
+
+    image_session = create_image_session(db_session, product_id=None, title="保存后取消")
+    result = create_image_session_generation_task(
+        db_session,
+        image_session_id=image_session.id,
+        prompt="provider 已返回但保存前后被取消",
+        size="1024x1024",
+    )
+    task_id = result.task.id
+    result.task.status = JobStatus.RUNNING
+    result.task.started_at = datetime.now(UTC)
+    db_session.commit()
+    storage = CancellingStorage()
+
+    with pytest.raises(ImageSessionGenerationCancelledError):
+        _execute_image_session_round_generation(
+            db_session,
+            image_session_id=image_session.id,
+            prompt=result.task.prompt,
+            size=result.task.size,
+            generation_task_id=task_id,
+            storage=storage,
+        )
+
+    db_session.expire_all()
+    task = db_session.get(ImageSessionGenerationTask, task_id)
+    rounds = db_session.query(ImageSessionRound).filter(ImageSessionRound.session_id == image_session.id).all()
+    assets = db_session.query(ImageSessionAsset).filter(ImageSessionAsset.session_id == image_session.id).all()
+
+    assert task is not None
+    assert task.status == JobStatus.CANCELLED
+    assert task.failure_reason == IMAGE_SESSION_CANCELLED_REASON
+    assert task.is_retryable is False
+    assert task.completed_candidates == 0
+    assert rounds == []
+    assert assets == []
+    assert storage.saved_relative_path is not None
+    assert not Path(configured_env, storage.saved_relative_path).exists()
+
+
+def test_image_session_generation_cancelled_task_is_not_overwritten_by_late_failure(
+    configured_env: Path,
+    db_session,
+) -> None:
+    from productflow_backend.application.image_sessions import (
+        IMAGE_SESSION_CANCELLED_REASON,
+        _handle_image_generation_task_failure_safely,
+        create_image_session,
+        create_image_session_generation_task,
+    )
+    from productflow_backend.domain.enums import JobStatus
+
+    image_session = create_image_session(db_session, product_id=None, title="取消后失败不覆盖")
+    result = create_image_session_generation_task(
+        db_session,
+        image_session_id=image_session.id,
+        prompt="取消后 provider 才报错",
+        size="1024x1024",
+    )
+    result.task.status = JobStatus.CANCELLED
+    result.task.failure_reason = IMAGE_SESSION_CANCELLED_REASON
+    result.task.finished_at = datetime.now(UTC)
+    result.task.progress_phase = "cancelled"
+    result.task.progress_updated_at = datetime.now(UTC)
+    result.task.is_retryable = False
+    result.task.attempts = 1
+    db_session.commit()
+
+    _handle_image_generation_task_failure_safely(
+        db_session,
+        task_id=result.task.id,
+        reason="图片生成失败，请稍后重试",
+    )
+
+    db_session.expire_all()
+    task = db_session.get(ImageSessionGenerationTask, result.task.id)
+    assert task is not None
+    assert task.status == JobStatus.CANCELLED
+    assert task.failure_reason == IMAGE_SESSION_CANCELLED_REASON
+    assert task.progress_phase == "cancelled"
+    assert task.is_retryable is False
+
+
+def test_image_session_manual_cancel_rejects_terminal_task(
+    configured_env: Path,
+    db_session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from productflow_backend.domain.enums import JobStatus
+    from productflow_backend.presentation.api import create_app
+
+    monkeypatch.setattr(
+        "productflow_backend.application.image_sessions.enqueue_image_session_generation_task",
+        lambda task_id: None,
+    )
+    app = create_app()
+    client = TestClient(app)
+    _login(client)
+
+    created = client.post("/api/image-sessions", json={"title": "已结束取消"})
+    assert created.status_code == 201
+    session_id = created.json()["id"]
+    submitted = client.post(
+        f"/api/image-sessions/{session_id}/generate",
+        json={"prompt": "创建任务后改为成功", "size": "1024x1024"},
+    )
+    assert submitted.status_code == 202
+    task_id = submitted.json()["generation_tasks"][0]["id"]
+
+    db_session.expire_all()
+    task = db_session.get(ImageSessionGenerationTask, task_id)
+    assert task is not None
+    task.status = JobStatus.SUCCEEDED
+    task.finished_at = datetime.now(UTC)
+    task.is_retryable = False
+    db_session.commit()
+
+    cancelled = client.post(f"/api/image-sessions/{session_id}/generation-tasks/{task_id}/cancel")
+
+    assert cancelled.status_code == 400
+    assert cancelled.json()["detail"] == "已结束的生成任务不能取消"
 
 
 def test_image_session_manual_retry_rejects_non_failed_task(

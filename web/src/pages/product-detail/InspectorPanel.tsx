@@ -26,7 +26,7 @@ import { IMAGE_PREVIEW_SURFACE_CLASS_NAME, NODE_LABELS } from "./constants";
 import { DownloadLink } from "./ImageDownloadComponents";
 import { getNodeImageDownload } from "./imageDownloads";
 import type { NodeConfigDraft, SaveStatus } from "./types";
-import { outputText, statusClass, workflowNodeStatusLabel } from "./utils";
+import { type WorkflowNodeRunActionState, outputText, statusClass, workflowNodeStatusLabel } from "./utils";
 import { TextArea } from "./TextArea";
 
 const SAVE_STATUS_LABELS: Record<SaveStatus, string> = {
@@ -58,7 +58,7 @@ interface InspectorPanelProps {
   onUploadImage: (file: File) => void;
   onDelete: () => void;
   busy: boolean;
-  runBusy: boolean;
+  runActionState: WorkflowNodeRunActionState;
   saveStatus: SaveStatus;
 }
 
@@ -77,7 +77,7 @@ export function InspectorPanel({
   onUploadImage,
   onDelete,
   busy,
-  runBusy,
+  runActionState,
   saveStatus,
 }: InspectorPanelProps) {
   const [promptPreview, setPromptPreview] = useState<PromptPreview | null>(null);
@@ -166,15 +166,16 @@ export function InspectorPanel({
             <button
               type="button"
               onClick={onRun}
-              disabled={runBusy}
+              disabled={runActionState.disabled}
               className="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
+              title={runActionState.title}
             >
-              {runBusy ? (
+              {runActionState.pending ? (
                 <Loader2 size={13} className="mr-1.5 animate-spin" />
               ) : (
                 <Play size={13} className="mr-1.5" />
               )}
-              运行
+              {runActionState.label}
             </button>
             <button
               type="button"

@@ -58,13 +58,15 @@
   edges and run history cleanup are backend responsibilities.
 - Workflow execution is asynchronous from the frontend perspective: `runProductWorkflow(productId, input?)` returns the
   persisted kickoff state, then the page polls `['product-workflow', productId]` while any run is `running` or any node is
-  `queued` / `running`.
+  `queued` / `running`. Run history must use backend `is_cancelable` / `is_retryable` fields for cancel/retry actions;
+  cancel buttons call the workflow cancel API and must not be local-only state.
 - Running any workflow node must first flush the currently selected dirty inspector draft, even when the clicked run action
   belongs to a different node. Otherwise a user can edit the product context node and immediately run an image node from
   the canvas before autosave persists the newest product fields.
-- Do not use the run mutation pending state as a global canvas lock. Split interaction busy state so `runBusy` prevents
-  duplicate run clicks, structural mutations can be disabled during active runs, and node dragging remains available unless
-  a layout/position mutation is already pending.
+- Do not use workflow active state as a global node-run lock. Split interaction busy state so the full-workflow run button
+  and structural mutations can be disabled during active runs, while individual node run buttons are disabled only when
+  that node is already `queued` / `running` or a run submission is currently pending. Node dragging remains available
+  unless a layout/position mutation is already pending.
 - When an active run transitions to inactive, refresh artifact-bearing queries: `['product', productId]`,
   `['product-history', productId]`, and `['products']`.
 - Product creation is intentionally minimal: only product name and preview/main image are required; category, price,
@@ -126,7 +128,8 @@
 
 - API `ApiError.detail` is shown near the workflow action.
 - Missing workflow while loading -> loading state, not an empty destructive reset.
-- Active workflow polling stops when no run is `running` and no node is `queued` / `running`.
+- Active workflow polling stops when no run is `running` and no node is `queued` / `running`; `cancelled` runs are
+  terminal and should not keep polling alive.
 - Deleting a node during an active workflow run -> show backend `运行中，稍后删除`; do not locally remove it.
 - Deleting a product during active workflow runs -> show backend detail; do not locally remove it until the API succeeds.
 - Unsupported node config fields stay in `config_json` and are not force-cast to narrower frontend-only types.
@@ -149,8 +152,9 @@
   position mutation is pending; it must not briefly render the old `position_x` / `position_y`.
 - Base: dragging an empty canvas/background area pans the viewport, while dragging a node still persists node coordinates
   and clicking edge/delete/run/upload/zoom controls does not move the viewport.
-- Base: while a workflow run is active, users can still drag nodes to reorganize the canvas, but cannot start duplicate
-  runs or make unsafe structural changes.
+- Base: while a workflow run is active, users can still drag nodes to reorganize the canvas and may run another
+  non-queued/non-running node; the backend rejects overlapping planned nodes and the UI still blocks unsafe structural
+  changes.
 - Base: deleting a node removes it and its connected edges after the backend response, and a page refresh does not restore
   the node.
 - Base: deleting a product from the product list removes it after API success and a direct detail load returns not found.
@@ -161,8 +165,8 @@
   `source_asset_id`; filling from a PosterVariant either reuses its paired SourceAsset id or relies on the backend
   materialization endpoint.
 - Bad: keeping workflow nodes in local-only state; refresh would lose the DAG and break run history.
-- Bad: treating `runProductWorkflow` pending as `busy` for all canvas interactions; long provider calls would make drag
-  and layout feel frozen.
+- Bad: treating `workflowActive` as `runBusy` for every node run button; that hides the backend's ability to run disjoint
+  nodes and makes the UI look globally locked while only one node is active.
 
 ### 6. Tests Required
 
@@ -251,12 +255,17 @@ polling.
 
 ```tsx
 const workflowActive = hasActiveWorkflow(workflow);
-const runBusy = runWorkflowMutation.isPending || workflowActive;
+const runSubmissionPending = runWorkflowMutation.isPending || retryWorkflowRunMutation.isPending;
+const selectedNodeRunAction = getWorkflowNodeRunActionState(selectedNode, {
+  runSubmissionPending,
+  pendingStartNodeId,
+});
 const dragBusy = updateNodePositionMutation.isPending;
+const structureBusy = layoutMutationBusy || workflowActive;
 ```
 
-Use persisted workflow activity to control duplicate runs and polling, while keeping layout dragging independent from
-provider execution.
+Use persisted workflow activity to control polling and unsafe structural mutations. Use node status plus submission
+pending state for individual node run actions, while keeping layout dragging independent from provider execution.
 
 ## Scenario: Autosaved direct image workbench
 

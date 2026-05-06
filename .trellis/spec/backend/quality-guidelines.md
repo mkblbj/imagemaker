@@ -427,8 +427,8 @@ Preserve these semantics when editing durable task code.
 
 - Contract home: `domain/durable_generation_tasks.py`.
 - Shared enqueue boundary: `application/queue_submission.py::enqueue_or_mark_failed(...)`.
-- Shared admission gates:
-  - submit-time active cap: `application/admission.py::ensure_generation_capacity(...)`;
+- Shared capacity gates:
+  - durable submit compatibility lock: `application/admission.py::ensure_generation_capacity(...)`;
   - worker-time running cap: `application/admission.py::generation_running_capacity_available(...)`.
 - Current contracts:
   - `WORKFLOW_RUN_GENERATION_TASK_CONTRACT`;
@@ -450,18 +450,20 @@ Preserve these semantics when editing durable task code.
   explicit queued state.
 - Startup recovery must inspect durable DB state and then resend delivery only for queued or stale-running work according
   to the model's recovery rules. API startup must not reset recent running work owned by another worker.
-- Generation capacity must use the shared DB-backed gates. Submit-time checks count active queued/running work; worker
-  claims count running work before entering provider execution.
+- Generation capacity must use the shared DB-backed worker gate. Submit paths create or reuse durable queued rows, while
+  worker claims count running work before entering provider execution.
 - Status snapshots and queue metadata must be derived from durable rows and first-class result rows, not Redis queue
   length or in-process memory.
+- Manual cancel must be an owning durable-row transition. Terminal statuses include `cancelled` where the business model
+  supports user cancellation, and duplicate delivery for cancelled rows must no-op.
 
 #### 4. Validation & Error Matrix
 
 - Queue send failure after durable creation -> durable row is failed, API returns `503`,
   `{"detail": "任务队列暂不可用，请稍后重试"}`.
-- Capacity reached before durable creation -> no new resource-consuming durable row, API returns `429`,
-  `{"detail": "当前生成任务较多，请稍后再试"}`.
-- Duplicate terminal message -> no-op, no provider call, no new artifact row.
+- Running capacity reached during worker claim -> durable row stays queued, provider is not called, and delivery is
+  retried later.
+- Duplicate terminal message, including cancelled rows -> no-op, no provider call, no new artifact row.
 - Duplicate currently-running message -> no-op; stale-running recovery handles old abandoned work separately.
 - Recovery sees queued work -> resend delivery without changing product/provider semantics.
 - Recovery sees stale running work -> apply the owning model's documented stale behavior, then resend or fail as
@@ -470,9 +472,9 @@ Preserve these semantics when editing durable task code.
 
 #### 5. Good/Base/Bad Cases
 
-- Good: a new generation path adds a `DurableGenerationTaskContract`, calls `ensure_generation_capacity(...)` before
-  durable creation, submits through `enqueue_or_mark_failed(...)`, uses a `max_retries=0` actor, and adds recovery/status
-  tests.
+- Good: a new generation path adds a `DurableGenerationTaskContract`, persists a durable queued row, submits through
+  `enqueue_or_mark_failed(...)`, gates provider execution with `generation_running_capacity_available(...)`, uses a
+  `max_retries=0` actor, and adds recovery/status tests.
 - Good: workflow run and image-session task continue using separate tables and business statuses while sharing contract
   constants and checks for active/running/queued semantics.
 - Base: workflow run has no task-level queued status; its active run is `running`, while node runs hold queued/running
@@ -548,6 +550,8 @@ def run_generation_task(task_id: str) -> None:
   creation, and enqueue; it must not wait for an image provider call.
 - API: `POST /api/image-sessions/{image_session_id}/generation-tasks/{task_id}/retry` returns `202 Accepted` after
   resetting a failed retryable task to `queued` and enqueueing the same durable task ID.
+- API: `POST /api/image-sessions/{image_session_id}/generation-tasks/{task_id}/cancel` returns
+  `ImageSessionDetailResponse` after durably marking an active task `cancelled`.
 - DB: `image_session_generation_tasks` stores `session_id`, `prompt`, `size`, `base_asset_id`,
   `selected_reference_asset_ids`, `generation_count`, `status`, progress fields (`completed_candidates`,
   `active_candidate_index`, `progress_phase`, `progress_updated_at`, provider response id/status and metadata),
@@ -561,8 +565,8 @@ def run_generation_task(task_id: str) -> None:
   candidates may be reset to queued; stale partial-success tasks are marked failed without retry.
 - Response DTO: `ImageSessionDetailResponse.generation_tasks` exposes task summaries so route entry/refresh can show
   active or failed generation work without a separate orchestration endpoint.
-- Each generation task summary exposes `attempts` and `is_retryable` so the frontend can decide whether to render manual
-  retry affordances.
+- Each generation task summary exposes `attempts`, `is_retryable`, and `is_cancelable` so the frontend can decide whether
+  to render manual retry/cancel affordances.
 - Each generation task summary includes global queue fields: `queue_active_count`, `queue_running_count`,
   `queue_queued_count`, `queue_max_concurrent_tasks`, `queued_ahead_count`, and `queue_position`.
 - Queue overview API: `GET /api/generation-queue` returns `active_count`, `running_count`, `queued_count`, and
@@ -570,19 +574,22 @@ def run_generation_task(task_id: str) -> None:
 
 ##### 3. Contracts
 
-- Task statuses are `queued`, `running`, `succeeded`, and `failed`; queued/running rows count toward
-  `generation_max_concurrent_tasks`.
+- Task statuses are `queued`, `running`, `succeeded`, `failed`, and `cancelled`; queued/running rows count toward queue
+  overview metadata, while only running rows consume `generation_max_concurrent_tasks` provider capacity.
 - The continuous image-session worker actor keeps an internal failsafe Dramatiq `time_limit` via
   `image_session_worker_failsafe_time_limit_minutes`. User-facing stale behavior must be driven by progress heartbeat
   idle recovery, not a hard total task timeout.
 - Queue position is computed from durable queued image-session generation task rows ordered by `created_at`. Running tasks
   have no queue position and should be displayed as front-of-queue work.
-- New image-session generation work must call shared admission before creating a queued task. The count must be based on
-  active DB rows, not an in-process slot, because API/worker processes may be replicated.
+- New image-session generation work must create a queued task even when all running slots are occupied. The worker claim
+  count must be based on running DB rows, not an in-process slot, because API/worker processes may be replicated.
 - Queue enqueue failure after task creation must mark the task `failed` (or otherwise return a stable `503`) before the
   route responds; do not strand a queued row that no worker can consume.
 - Worker claim must be atomic at the database boundary: update `queued -> running` with a status condition and no-op when
   the row is terminal, already running, or already claimed by another worker.
+- Manual cancel sets active tasks to `cancelled`, `failure_reason = "已取消"`, `progress_phase = "cancelled"`, and
+  `is_retryable=false`. Workers must re-check durable cancellation around provider execution/save boundaries and return
+  without creating new rounds when cancellation is observed.
 - Worker failures must retry through application state, not Dramatiq actor retries. Keep
   `run_image_session_generation_task(max_retries=0)`, increment `attempts` on each worker claim, reset the same task to
   `queued` while the finite cap has not been reached, and leave terminal failed tasks `is_retryable=true`.
@@ -601,14 +608,19 @@ def run_generation_task(task_id: str) -> None:
 - Missing session -> `404`, `连续生图会话不存在`.
 - Invalid `generation_count`, `size`, `base_asset_id`, or selected references -> existing image-session validation errors;
   do not enqueue a task.
-- Active generation cap reached -> `429`, `当前生成任务较多，请稍后再试`; no new task row should be created for that request.
+- Running generation cap reached by another task -> the new task is still accepted as `queued`; when consumed, the worker
+  leaves it queued, records a waiting-for-capacity progress phase, and schedules delayed delivery retry.
 - Redis/Dramatiq send failure after DB task creation -> mark task `failed`, then return `503`,
   `任务队列暂不可用，请稍后重试`.
 - Manual retry for a non-`failed` task -> `400`, `只有失败的生成任务可以重试`.
 - Manual retry for `failed` task with `is_retryable=false` -> `400`, `该生成任务不可重试`.
+- Manual cancel for an active task -> task becomes `cancelled`, exits the active queue, and duplicate worker delivery
+  no-ops.
+- Manual cancel for a terminal succeeded/failed task -> `400`, `已结束的生成任务不能取消`.
 - Redis/Dramatiq send failure after manual retry reset -> return `503`, `任务队列暂不可用，请稍后重试`, and keep the task
   failed + retryable so the user can try again.
-- Duplicate Redis message for `succeeded`, `failed`, or `running` task -> no provider call and no new round/asset rows.
+- Duplicate Redis message for `succeeded`, `failed`, `cancelled`, or `running` task -> no provider call and no new
+  round/asset rows.
 - API restart with queued retryable task -> re-enqueue without changing task semantics.
 - Worker restart with stale running retryable task and no completed candidates -> reset to queued and re-enqueue.
 - Worker restart with stale running partial-success task -> mark failed without retry, keeping the partial
@@ -639,12 +651,15 @@ def run_generation_task(task_id: str) -> None:
   task failed + retryable with `attempts` exposed in detail/status responses.
 - Manual retry route tests: failed retryable task resets to queued and enqueues; non-failed retry returns `400`; enqueue
   failure returns `503` and keeps the task retryable.
+- Manual cancel route tests: active task becomes `cancelled`, terminal task cancellation is rejected, and duplicate worker
+  delivery no-ops for cancelled tasks.
 - Partial retry test: a task that saved candidate 1/2 and failed resumes at candidate 2 without duplicating candidate 1 or
   changing the existing `generation_group_id`.
 - Duplicate/no-op tests: terminal and already-running task messages do not call the provider or create extra rounds.
 - Recovery tests: queued tasks are re-sent; stale running recovery uses `progress_updated_at`, falls back to `started_at`,
   and fails stale partial-success tasks instead of retrying them.
-- Admission test: queued/running image-session generation tasks count toward `generation_max_concurrent_tasks`.
+- Admission test: submit accepts queued work while running capacity is full, worker capacity checks count running durable
+  work, and queue metadata still reports active queued/running counts.
 - Queue metadata test: queued task responses expose `queued_ahead_count` / `queue_position`, and the global overview
   counts active queued/running durable work.
 - Frontend gate: update DTO types and run `just web-build` when `ImageSessionDetail` or task status rendering changes.

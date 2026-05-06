@@ -202,15 +202,6 @@ class WorkflowRun(Base):
     """一次工作流执行记录。"""
 
     __tablename__ = "workflow_runs"
-    __table_args__ = (
-        Index(
-            "uq_workflow_runs_one_running_per_workflow",
-            "workflow_id",
-            unique=True,
-            postgresql_where=text("status = 'running'"),
-            sqlite_where=text("status = 'running'"),
-        ),
-    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     workflow_id: Mapped[str] = mapped_column(String(36), ForeignKey("product_workflows.id", ondelete="CASCADE"))
@@ -234,7 +225,16 @@ class WorkflowNodeRun(Base):
 
     __tablename__ = "workflow_node_runs"
 
-    __table_args__ = (Index("ix_workflow_node_runs_run_node", "workflow_run_id", "node_id"),)
+    __table_args__ = (
+        Index("ix_workflow_node_runs_run_node", "workflow_run_id", "node_id"),
+        Index(
+            "uq_workflow_node_runs_one_active_per_node",
+            "node_id",
+            unique=True,
+            postgresql_where=text("status IN ('queued', 'running')"),
+            sqlite_where=text("status IN ('queued', 'running')"),
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     workflow_run_id: Mapped[str] = mapped_column(String(36), ForeignKey("workflow_runs.id", ondelete="CASCADE"))

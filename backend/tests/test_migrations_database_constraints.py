@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 import sqlalchemy as sa
 from alembic.config import Config
 
@@ -25,6 +26,7 @@ from productflow_backend.infrastructure.db.models import (
     PosterVariant,
     SourceAsset,
     WorkflowNode,
+    WorkflowNodeRun,
     WorkflowRun,
     new_id,
     utcnow,
@@ -39,6 +41,7 @@ def test_sqlalchemy_enum_columns_use_database_values() -> None:
     assert ImageSessionGenerationTask.__table__.c.status.type.enums == [member.value for member in JobStatus]
     assert WorkflowNode.__table__.c.node_type.type.enums == [member.value for member in WorkflowNodeType]
     assert WorkflowNode.__table__.c.status.type.enums == [member.value for member in WorkflowNodeStatus]
+    assert WorkflowNodeRun.__table__.c.status.type.enums == [member.value for member in WorkflowNodeStatus]
     assert WorkflowRun.__table__.c.status.type.enums == [member.value for member in WorkflowRunStatus]
 
 
@@ -341,4 +344,127 @@ def test_alembic_upgrade_removes_legacy_workflow_nodes(tmp_path: Path, monkeypat
     assert node_types == ["product_context", "copy_generation", "image_generation", "reference_image"]
     assert edge_ids == ["edge-supported"]
     assert node_run_ids == ["node-run-supported"]
+    get_settings.cache_clear()
+
+
+def test_disjoint_workflow_node_run_migration_constraints_support_sqlite(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_path = tmp_path / "workflow-node-run-constraints.db"
+    storage_root = tmp_path / "storage"
+    monkeypatch.setenv("ADMIN_ACCESS_KEY", "super-secret-admin-key")
+    monkeypatch.setenv("SESSION_SECRET", "super-secret-session-key-123")
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{database_path}")
+    monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/9")
+    monkeypatch.setenv("STORAGE_ROOT", str(storage_root))
+    get_settings.cache_clear()
+
+    backend_dir = Path(__file__).resolve().parents[1]
+    config = Config(str(backend_dir / "alembic.ini"))
+    config.set_main_option("script_location", str(backend_dir / "alembic"))
+    command.upgrade(config, "20260507_0020")
+
+    engine = sa.create_engine(f"sqlite:///{database_path}")
+    now = "2026-05-07 00:21:00"
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                "INSERT INTO products (id, name, created_at, updated_at) "
+                "VALUES ('product-1', '节点并行迁移商品', :now, :now)"
+            ),
+            {"now": now},
+        )
+        connection.execute(
+            sa.text(
+                "INSERT INTO product_workflows (id, product_id, title, active, created_at, updated_at) "
+                "VALUES ('workflow-1', 'product-1', '节点并行迁移工作流', 1, :now, :now)"
+            ),
+            {"now": now},
+        )
+        connection.execute(
+            sa.text(
+                "INSERT INTO workflow_nodes "
+                "(id, workflow_id, node_type, title, position_x, position_y, "
+                "config_json, status, created_at, updated_at) "
+                "VALUES "
+                "('node-1', 'workflow-1', 'copy_generation', '文案', 0, 0, '{}', 'queued', :now, :now), "
+                "('node-2', 'workflow-1', 'image_generation', '生图', 100, 0, '{}', 'queued', :now, :now)"
+            ),
+            {"now": now},
+        )
+        connection.execute(
+            sa.text(
+                "INSERT INTO workflow_runs (id, workflow_id, status, started_at) "
+                "VALUES ('run-1', 'workflow-1', 'running', :now)"
+            ),
+            {"now": now},
+        )
+
+    engine.dispose()
+    command.upgrade(config, "head")
+
+    engine = sa.create_engine(f"sqlite:///{database_path}")
+    inspector = sa.inspect(engine)
+    indexes = {index["name"]: index for index in inspector.get_indexes("workflow_node_runs")}
+    assert "uq_workflow_node_runs_one_active_per_node" in indexes
+    assert bool(indexes["uq_workflow_node_runs_one_active_per_node"]["unique"])
+    assert indexes["uq_workflow_node_runs_one_active_per_node"]["column_names"] == ["node_id"]
+    workflow_run_indexes = {index["name"] for index in inspector.get_indexes("workflow_runs")}
+    assert "uq_workflow_runs_one_running_per_workflow" not in workflow_run_indexes
+
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                "INSERT INTO workflow_runs (id, workflow_id, status, started_at) "
+                "VALUES ('run-2', 'workflow-1', 'running', :now)"
+            ),
+            {"now": now},
+        )
+        connection.execute(
+            sa.text(
+                "INSERT INTO workflow_node_runs (id, workflow_run_id, node_id, status, started_at) "
+                "VALUES "
+                "('node-run-1', 'run-1', 'node-1', 'queued', :now), "
+                "('node-run-2', 'run-2', 'node-2', 'running', :now)"
+            ),
+            {"now": now},
+        )
+
+    with pytest.raises(sa.exc.IntegrityError):
+        with engine.begin() as connection:
+            connection.execute(
+                sa.text(
+                    "INSERT INTO workflow_node_runs (id, workflow_run_id, node_id, status, started_at) "
+                    "VALUES ('node-run-duplicate', 'run-2', 'node-1', 'running', :now)"
+                ),
+                {"now": now},
+            )
+
+    engine.dispose()
+    command.downgrade(config, "20260507_0020")
+
+    engine = sa.create_engine(f"sqlite:///{database_path}")
+    inspector = sa.inspect(engine)
+    indexes = {index["name"]: index for index in inspector.get_indexes("workflow_runs")}
+    assert "uq_workflow_runs_one_running_per_workflow" in indexes
+    node_run_indexes = {index["name"] for index in inspector.get_indexes("workflow_node_runs")}
+    assert "uq_workflow_node_runs_one_active_per_node" not in node_run_indexes
+    with engine.connect() as connection:
+        active_run_count = connection.execute(
+            sa.text("SELECT COUNT(*) FROM workflow_runs WHERE workflow_id = 'workflow-1' AND status = 'running'")
+        ).scalar_one()
+        failed_run_count = connection.execute(
+            sa.text("SELECT COUNT(*) FROM workflow_runs WHERE workflow_id = 'workflow-1' AND status = 'failed'")
+        ).scalar_one()
+        duplicate_run_active_node_runs = connection.execute(
+            sa.text(
+                "SELECT COUNT(*) FROM workflow_node_runs "
+                "WHERE workflow_run_id = 'run-1' AND status IN ('queued', 'running')"
+            )
+        ).scalar_one()
+    assert active_run_count == 1
+    assert failed_run_count == 1
+    assert duplicate_run_active_node_runs == 0
+    engine.dispose()
     get_settings.cache_clear()

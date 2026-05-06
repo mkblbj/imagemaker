@@ -1,7 +1,7 @@
 export type ProductWorkflowState = "draft" | "copy_ready" | "poster_ready" | "failed";
 export type CopyStatus = "draft" | "confirmed";
 export type PosterKind = "main_image" | "promo_poster";
-export type JobStatus = "queued" | "running" | "succeeded" | "failed";
+export type JobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
 export type SourceAssetKind = "original_image" | "reference_image" | "processed_product_image";
 export type ImageSessionAssetKind = "reference_upload" | "generated_image";
 export type WorkflowNodeType =
@@ -10,7 +10,7 @@ export type WorkflowNodeType =
   | "copy_generation"
   | "image_generation";
 export type WorkflowNodeStatus = "idle" | "queued" | "running" | "succeeded" | "failed";
-export type WorkflowRunStatus = "running" | "succeeded" | "failed";
+export type WorkflowRunStatus = "running" | "succeeded" | "failed" | "cancelled";
 
 export interface SessionState {
   authenticated: boolean;
@@ -182,6 +182,14 @@ export interface WorkflowRun {
   started_at: string;
   finished_at: string | null;
   failure_reason: string | null;
+  is_retryable: boolean;
+  is_cancelable: boolean;
+  queue_active_count: number;
+  queue_running_count: number;
+  queue_queued_count: number;
+  queue_max_concurrent_tasks: number;
+  queued_ahead_count: number | null;
+  queue_position: number | null;
   node_runs: WorkflowNodeRun[];
 }
 
@@ -192,6 +200,14 @@ export interface WorkflowRunStatusSummary {
   started_at: string;
   finished_at: string | null;
   failure_reason: string | null;
+  is_retryable: boolean;
+  is_cancelable: boolean;
+  queue_active_count: number;
+  queue_running_count: number;
+  queue_queued_count: number;
+  queue_max_concurrent_tasks: number;
+  queued_ahead_count: number | null;
+  queue_position: number | null;
   node_runs: WorkflowNodeRunStatus[];
 }
 
@@ -305,6 +321,7 @@ export interface ImageSessionGenerationTask {
   provider_notes: string[];
   attempts: number;
   is_retryable: boolean;
+  is_cancelable: boolean;
   created_at: string;
   started_at: string | null;
   finished_at: string | null;

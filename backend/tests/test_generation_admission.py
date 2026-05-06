@@ -9,8 +9,8 @@ from helpers import _login, _make_demo_image_bytes
 from productflow_backend.application.image_sessions import create_image_session, create_image_session_generation_task
 from productflow_backend.application.product_workflows import start_product_workflow_run
 from productflow_backend.application.use_cases import create_product
-from productflow_backend.domain.enums import JobStatus
-from productflow_backend.infrastructure.db.models import AppSetting
+from productflow_backend.domain.enums import JobStatus, WorkflowNodeStatus
+from productflow_backend.infrastructure.db.models import AppSetting, WorkflowNode, WorkflowNodeRun
 
 
 def _set_generation_cap(db_session, value: int) -> None:
@@ -31,20 +31,28 @@ def _create_product(db_session, name: str):
     )
 
 
-def test_generation_cap_rejects_workflow_run_creation(
+def test_generation_cap_accepts_and_queues_workflow_run_creation(
     configured_env: Path,
     db_session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from productflow_backend.presentation.api import create_app
 
+    sent_run_ids: list[str] = []
     monkeypatch.setattr(
         "productflow_backend.application.product_workflow_execution.enqueue_workflow_run",
-        lambda run_id: pytest.fail(f"busy workflow run must not enqueue: {run_id}"),
+        lambda run_id: sent_run_ids.append(run_id),
     )
 
     busy_product = _create_product(db_session, "占用并发商品")
-    start_product_workflow_run(db_session, product_id=busy_product.id)
+    busy = start_product_workflow_run(db_session, product_id=busy_product.id)
+    busy_node_run = db_session.query(WorkflowNodeRun).filter_by(workflow_run_id=busy.run_id).first()
+    assert busy_node_run is not None
+    busy_node = db_session.get(WorkflowNode, busy_node_run.node_id)
+    assert busy_node is not None
+    busy_node_run.status = WorkflowNodeStatus.RUNNING
+    busy_node.status = WorkflowNodeStatus.RUNNING
+    db_session.commit()
     workflow_target = _create_product(db_session, "工作流限流商品")
     _set_generation_cap(db_session, 1)
 
@@ -53,18 +61,37 @@ def test_generation_cap_rejects_workflow_run_creation(
     _login(client)
 
     workflow_response = client.post(f"/api/products/{workflow_target.id}/workflow/run", json={})
-    assert workflow_response.status_code == 429
-    assert workflow_response.json()["detail"] == "当前生成任务较多，请稍后再试"
+    assert workflow_response.status_code == 200
+    queued_run_id = workflow_response.json()["runs"][0]["id"]
+    assert workflow_response.json()["runs"][0]["status"] == "running"
+    assert workflow_response.json()["runs"][0]["queue_active_count"] == 2
+    assert workflow_response.json()["runs"][0]["queue_running_count"] == 1
+    assert workflow_response.json()["runs"][0]["queue_queued_count"] == 1
+    assert sent_run_ids == [queued_run_id]
 
 
-def test_generation_cap_rejects_image_session_generation_task_creation(
+def test_generation_cap_accepts_and_queues_image_session_generation_task_creation(
     configured_env: Path,
     db_session,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from productflow_backend.presentation.api import create_app
 
-    busy_product = _create_product(db_session, "同步占用商品")
-    start_product_workflow_run(db_session, product_id=busy_product.id)
+    sent_task_ids: list[str] = []
+    monkeypatch.setattr(
+        "productflow_backend.application.image_sessions.enqueue_image_session_generation_task",
+        lambda task_id: sent_task_ids.append(task_id),
+    )
+
+    image_session = create_image_session(db_session, product_id=None, title="同步占用会话")
+    running = create_image_session_generation_task(
+        db_session,
+        image_session_id=image_session.id,
+        prompt="第一张正在跑",
+        size="1024x1024",
+    ).task
+    running.status = JobStatus.RUNNING
+    db_session.commit()
     _set_generation_cap(db_session, 1)
 
     app = create_app()
@@ -79,8 +106,14 @@ def test_generation_cap_rejects_image_session_generation_task_creation(
         json={"prompt": "这次应该被并发上限拦截", "size": "1024x1024"},
     )
 
-    assert generated.status_code == 429
-    assert generated.json()["detail"] == "当前生成任务较多，请稍后再试"
+    assert generated.status_code == 202
+    tasks = generated.json()["generation_tasks"]
+    assert len(tasks) == 1
+    assert tasks[0]["status"] == "queued"
+    assert tasks[0]["queue_active_count"] == 2
+    assert tasks[0]["queue_running_count"] == 1
+    assert tasks[0]["queue_queued_count"] == 1
+    assert sent_task_ids == [tasks[0]["id"]]
 
 
 def test_active_generation_task_count_includes_image_session_generation_tasks(

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import type { ProductWorkflow, WorkflowNode } from "../../lib/types";
+import type { ProductWorkflow, WorkflowNode, WorkflowRun, WorkflowRunStatusSummary } from "../../lib/types";
 import {
+  getWorkflowNodeRunActionState,
   hasActiveWorkflow,
   imageWorkflowNodeWaitingLabel,
   isImageWorkflowNodeWaiting,
@@ -42,6 +43,48 @@ function workflowWith(overrides: Partial<ProductWorkflow>): ProductWorkflow {
   };
 }
 
+function workflowRun(overrides: Partial<WorkflowRun>): WorkflowRun {
+  return {
+    id: "run-1",
+    workflow_id: "workflow-1",
+    status: "running",
+    started_at: "2026-04-26T00:00:00Z",
+    finished_at: null,
+    failure_reason: null,
+    is_retryable: false,
+    is_cancelable: true,
+    queue_active_count: 1,
+    queue_running_count: 0,
+    queue_queued_count: 1,
+    queue_max_concurrent_tasks: 3,
+    queued_ahead_count: 0,
+    queue_position: 1,
+    node_runs: [],
+    ...overrides,
+  };
+}
+
+function workflowRunStatus(overrides: Partial<WorkflowRunStatusSummary>): WorkflowRunStatusSummary {
+  return {
+    id: "run-1",
+    workflow_id: "workflow-1",
+    status: "running",
+    started_at: "2026-04-26T00:00:00Z",
+    finished_at: null,
+    failure_reason: null,
+    is_retryable: false,
+    is_cancelable: true,
+    queue_active_count: 1,
+    queue_running_count: 0,
+    queue_queued_count: 1,
+    queue_max_concurrent_tasks: 3,
+    queued_ahead_count: 0,
+    queue_position: 1,
+    node_runs: [],
+    ...overrides,
+  };
+}
+
 describe("product-detail utils", () => {
   it("reads string arrays from output_json before config_json and filters non-strings", () => {
     const node: WorkflowNode = {
@@ -58,15 +101,7 @@ describe("product-detail utils", () => {
       hasActiveWorkflow(
         workflowWith({
           runs: [
-            {
-              id: "run-1",
-              workflow_id: "workflow-1",
-              status: "running",
-              started_at: "2026-04-26T00:00:00Z",
-              finished_at: null,
-              failure_reason: null,
-              node_runs: [],
-            },
+            workflowRun({}),
           ],
         }),
       ),
@@ -93,6 +128,63 @@ describe("product-detail utils", () => {
     );
     expect(isImageWorkflowNodeWaiting({ ...baseNode, node_type: "copy_generation", status: "running" })).toBe(false);
     expect(imageWorkflowNodeWaitingLabel({ ...baseNode, node_type: "reference_image", status: "succeeded" })).toBe("");
+  });
+
+  it("keeps node run action state scoped to the node instead of globally disabling every run button", () => {
+    const idleOptions = { runSubmissionPending: false, pendingStartNodeId: null };
+
+    expect(getWorkflowNodeRunActionState({ ...baseNode, id: "node-1", status: "queued" }, idleOptions)).toMatchObject({
+      disabled: true,
+      pending: true,
+      label: "排队中",
+    });
+
+    expect(getWorkflowNodeRunActionState({ ...baseNode, id: "node-2", status: "running" }, idleOptions)).toMatchObject({
+      disabled: true,
+      pending: true,
+      label: "运行中",
+    });
+
+    for (const status of ["idle", "succeeded", "failed"] as const) {
+      expect(getWorkflowNodeRunActionState({ ...baseNode, id: `node-${status}`, status }, idleOptions)).toMatchObject({
+        disabled: false,
+        pending: false,
+        label: "运行",
+      });
+    }
+
+    expect(
+      getWorkflowNodeRunActionState(
+        { ...baseNode, id: "node-3", status: "idle" },
+        { runSubmissionPending: true, pendingStartNodeId: "node-3" },
+      ),
+    ).toMatchObject({
+      disabled: true,
+      pending: true,
+      label: "提交中",
+    });
+
+    expect(
+      getWorkflowNodeRunActionState(
+        { ...baseNode, id: "node-4", status: "idle" },
+        { runSubmissionPending: true, pendingStartNodeId: "node-3" },
+      ),
+    ).toMatchObject({
+      disabled: true,
+      pending: false,
+      label: "运行",
+    });
+
+    expect(
+      getWorkflowNodeRunActionState(
+        { ...baseNode, id: "node-5", status: "idle" },
+        { runSubmissionPending: false, pendingStartNodeId: null },
+      ),
+    ).toMatchObject({
+      disabled: false,
+      pending: false,
+      label: "运行",
+    });
   });
 
   it("labels idle product context nodes as usable static context", () => {
@@ -124,13 +216,8 @@ describe("product-detail utils", () => {
         },
       ],
       runs: [
-        {
-          id: "run-1",
-          workflow_id: "workflow-1",
-          status: "running",
+        workflowRun({
           started_at: "2026-04-26T00:01:00Z",
-          finished_at: null,
-          failure_reason: null,
           node_runs: [
             {
               id: "node-run-1",
@@ -146,7 +233,7 @@ describe("product-detail utils", () => {
               finished_at: null,
             },
           ],
-        },
+        }),
       ],
     });
 
@@ -167,9 +254,7 @@ describe("product-detail utils", () => {
         },
       ],
       runs: [
-        {
-          id: "run-1",
-          workflow_id: "workflow-1",
+        workflowRunStatus({
           status: "failed",
           started_at: "2026-04-26T00:01:00Z",
           finished_at: "2026-04-26T00:02:00Z",
@@ -185,7 +270,7 @@ describe("product-detail utils", () => {
               finished_at: "2026-04-26T00:02:00Z",
             },
           ],
-        },
+        }),
       ],
       created_at: "2026-04-26T00:00:00Z",
       updated_at: "2026-04-26T00:02:01Z",
@@ -205,15 +290,9 @@ describe("product-detail utils", () => {
     const activeWorkflow = workflowWith({
       nodes: [{ ...baseNode, status: "running" }],
       runs: [
-        {
-          id: "run-1",
-          workflow_id: "workflow-1",
-          status: "running",
+        workflowRun({
           started_at: "2026-04-26T00:01:00Z",
-          finished_at: null,
-          failure_reason: null,
-          node_runs: [],
-        },
+        }),
       ],
     });
 
@@ -235,15 +314,13 @@ describe("product-detail utils", () => {
           },
         ],
         runs: [
-          {
-            id: "run-1",
-            workflow_id: "workflow-1",
+          workflowRunStatus({
             status: "succeeded",
             started_at: "2026-04-26T00:01:00Z",
             finished_at: "2026-04-26T00:02:00Z",
             failure_reason: null,
-            node_runs: [],
-          },
+            is_cancelable: false,
+          }),
         ],
         created_at: "2026-04-26T00:00:00Z",
         updated_at: "2026-04-26T00:02:00Z",
@@ -268,15 +345,9 @@ describe("product-detail utils", () => {
           },
         ],
         runs: [
-          {
-            id: "run-1",
-            workflow_id: "workflow-1",
-            status: "running",
+          workflowRunStatus({
             started_at: "2026-04-26T00:01:00Z",
-            finished_at: null,
-            failure_reason: null,
-            node_runs: [],
-          },
+          }),
         ],
         created_at: "2026-04-26T00:00:00Z",
         updated_at: "2026-04-26T00:01:30Z",

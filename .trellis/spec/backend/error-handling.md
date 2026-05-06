@@ -37,7 +37,8 @@ Current typed errors:
 - `BusinessValidationError`: explicit `400` for valid HTTP requests that are invalid for the current workflow state or
   selected resource.
 - `NotFoundError`: explicit `404` for missing domain/application resources.
-- `ResourceBusyError`: explicit `429` when global provider/worker admission control is at capacity.
+- `ResourceBusyError`: explicit `429` for future hard resource boundaries that cannot be represented as durable queued
+  work. Current durable generation submissions should queue instead of using this error for a full running-capacity slot.
 - `QueueUnavailableError`: explicit `503` when a durable task row was created but Redis/Dramatiq delivery failed.
 
 Typed business errors intentionally subclass `ValueError` during the migration so existing route catches continue to
@@ -216,19 +217,18 @@ Keep queue send failures visible to the API caller; do not leave a `QUEUED` dura
 modules should remain HTTP adapters: they call the submit use case, map `ValueError`/`BusinessError` to HTTP, and
 serialize the returned model.
 
-Public-demo resource-consuming entrypoints must run through the shared generation admission check before creating new
-provider/worker work:
+Public-demo durable generation entrypoints persist queued work before provider execution:
 
 - workflow run kickoff
 - continuous image-session generation
 
 For idempotent routes that can return an already-active `WorkflowRun`, check/reuse the existing active record before
-applying admission control. The cap protects creation of new resource-consuming work; it must not block duplicate
-submissions from seeing the already-created run or from re-enqueueing a stranded active workflow run.
+creating another durable run. The global cap protects provider/worker execution, not durable backlog creation; submissions
+must remain able to create queued work and re-enqueue stranded active workflow runs while all running slots are occupied.
 
-When the cap is reached, return the stable FastAPI error shape with status `429` and detail
-`"当前生成任务较多，请稍后再试"`. Do not leak queue, Redis, provider, or filesystem exception strings to users; persist or
-return a generic queue/provider failure detail instead.
+When a worker sees the running cap is reached, leave the durable task queued, do not call the provider, and schedule a
+delayed delivery retry. Do not leak queue, Redis, provider, or filesystem exception strings to users; persist or return a
+generic queue/provider failure detail instead.
 
 ### Scenario: Continuous image-session worker partial-success and timeout handling
 
@@ -259,13 +259,10 @@ return a generic queue/provider failure detail instead.
     global running generation capacity still has a free slot.
   - `running` -> `succeeded` after all requested candidates have been saved.
   - `running` -> `failed` after provider failure, timeout, or other safe-to-handle worker exception.
-- The global generation cap has two DB-backed gates:
-  - submit/admission checks count `queued + running` active work before creating new resource-consuming rows;
-  - worker claim checks only `running` work before entering provider execution, so existing queued backlog cannot make
-    provider calls exceed the configured cap.
-- PostgreSQL runtime must serialize both submit/admission and worker-claim capacity checks with the same transaction
-  advisory lock. SQLite tests may skip the advisory lock, but production worker processes must not rely on in-process
-  counters.
+- The global generation cap has one DB-backed execution gate: worker claims check current `running` work before entering
+  provider execution, so existing queued backlog can grow without allowing provider calls to exceed the configured cap.
+- PostgreSQL runtime must serialize worker-claim capacity checks with the transaction advisory lock. SQLite tests may skip
+  the advisory lock, but production worker processes must not rely on in-process counters.
 - When a worker sees no running capacity for a queued task, it must leave the task `queued`, keep `attempts` unchanged,
   set progress to a waiting state, and schedule a delayed delivery retry. It must not call the provider or mark the task
   failed just because capacity is currently full.

@@ -73,6 +73,13 @@ def enqueue_workflow_run(run_id: str) -> None:
     run_product_workflow_run.send(run_id)
 
 
+def enqueue_workflow_run_later(run_id: str, *, delay_ms: int) -> None:
+    from productflow_backend.workers import run_product_workflow_run
+
+    get_broker()
+    run_product_workflow_run.send_with_options(args=(run_id,), delay=delay_ms)
+
+
 def enqueue_image_session_generation_task(task_id: str) -> None:
     from productflow_backend.workers import run_image_session_generation_task
 

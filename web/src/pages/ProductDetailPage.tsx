@@ -10,6 +10,7 @@ import {
   Loader2,
   Maximize2,
   Minimize2,
+  OctagonX,
   Play,
   Plus,
   Settings2,
@@ -50,6 +51,7 @@ import { getNodeImageDownload, getSourceImageDownload } from "./product-detail/i
 import type { NodeConfigDraft, SaveStatus } from "./product-detail/types";
 import {
   clamp,
+  getWorkflowNodeRunActionState,
   hasActiveWorkflow,
   isProductWorkflowStatusActive,
   mergeProductWorkflowStatusIntoDetail,
@@ -300,6 +302,38 @@ export function ProductDetailPage() {
         mutationError instanceof ApiError
           ? mutationError.detail
           : "工作流运行失败",
+      );
+    },
+  });
+
+  const cancelWorkflowRunMutation = useMutation({
+    mutationFn: (runId: string) => api.cancelProductWorkflowRun(productId, runId),
+    onSuccess: async (nextWorkflow) => {
+      setError("");
+      queryClient.setQueryData(["product-workflow", productId], nextWorkflow);
+      await queryClient.invalidateQueries({ queryKey: ["product-workflow-status", productId] });
+      await queryClient.invalidateQueries({ queryKey: ["generation-queue"] });
+    },
+    onError: (mutationError) => {
+      setError(
+        mutationError instanceof ApiError
+          ? mutationError.detail
+          : "取消工作流失败",
+      );
+    },
+  });
+
+  const retryWorkflowRunMutation = useMutation({
+    mutationFn: (runId: string) => api.retryProductWorkflowRun(productId, runId),
+    onSuccess: (nextWorkflow) => {
+      setError("");
+      queryClient.setQueryData(["product-workflow", productId], nextWorkflow);
+    },
+    onError: (mutationError) => {
+      setError(
+        mutationError instanceof ApiError
+          ? mutationError.detail
+          : "重试工作流失败",
       );
     },
   });
@@ -592,6 +626,20 @@ export function ProductDetailPage() {
     }
   };
 
+  const handleCancelWorkflowRun = (run: ProductWorkflow["runs"][number]) => {
+    if (!run.is_cancelable || cancelWorkflowRunMutation.isPending) {
+      return;
+    }
+    cancelWorkflowRunMutation.mutate(run.id);
+  };
+
+  const handleRetryWorkflowRun = (run: ProductWorkflow["runs"][number]) => {
+    if (!run.is_retryable || retryWorkflowRunMutation.isPending) {
+      return;
+    }
+    retryWorkflowRunMutation.mutate(run.id);
+  };
+
   const startInspectorResize = (event: ReactPointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     disableBodyUserSelect();
@@ -623,7 +671,12 @@ export function ProductDetailPage() {
     bindNodeImageMutation.isPending ||
     updateNodeCopyMutation.isPending;
   const structureBusy = layoutMutationBusy || workflowActive;
-  const runBusy = runWorkflowMutation.isPending || workflowActive;
+  const runSubmissionPending = runWorkflowMutation.isPending || retryWorkflowRunMutation.isPending;
+  const pendingStartNodeId = runWorkflowMutation.isPending ? (runWorkflowMutation.variables ?? null) : null;
+  const fullWorkflowRunBusy = runSubmissionPending || workflowActive;
+  const workflowRunActionBusyRunId =
+    (cancelWorkflowRunMutation.isPending ? cancelWorkflowRunMutation.variables : null) ??
+    (retryWorkflowRunMutation.isPending ? retryWorkflowRunMutation.variables : null);
   const workflowCanvas = useWorkflowCanvas({
     workflow,
     zoomStorageKey: "productflow.workflow.zoom",
@@ -712,6 +765,7 @@ export function ProductDetailPage() {
   const product = productQuery.data;
   const sourceImage = getSourceImageDownload(product);
   const latestRun = workflow?.runs[0] ?? null;
+  const activeCancelableRun = workflow?.runs.find((run) => run.is_cancelable) ?? null;
   const canvasSize = getCanvasSize({
     minWidth: CANVAS_MIN_WIDTH,
     minHeight: CANVAS_MIN_HEIGHT,
@@ -741,14 +795,31 @@ export function ProductDetailPage() {
       <button
         type="button"
         onClick={() => void handleRunWorkflow(undefined)}
-        disabled={runBusy || !workflow}
+        disabled={fullWorkflowRunBusy || !workflow}
         className="flex w-full flex-col items-center rounded-lg bg-indigo-600 px-1 py-2 text-[10px] font-semibold text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
-        title={runBusy ? "工作流运行中" : "运行整个工作流"}
-        aria-label={runBusy ? "工作流运行中" : "运行整个工作流"}
+        title={fullWorkflowRunBusy ? "工作流运行中" : "运行整个工作流"}
+        aria-label={fullWorkflowRunBusy ? "工作流运行中" : "运行整个工作流"}
       >
-        {runBusy ? <Loader2 size={15} className="animate-spin" /> : <Play size={15} />}
-        <span className="mt-1 leading-none">{runBusy ? "运行中" : "运行"}</span>
+        {fullWorkflowRunBusy ? <Loader2 size={15} className="animate-spin" /> : <Play size={15} />}
+        <span className="mt-1 leading-none">{fullWorkflowRunBusy ? "运行中" : "运行"}</span>
       </button>
+      {activeCancelableRun ? (
+        <button
+          type="button"
+          onClick={() => handleCancelWorkflowRun(activeCancelableRun)}
+          disabled={cancelWorkflowRunMutation.isPending}
+          className="mt-1 flex w-full flex-col items-center rounded-lg border border-red-500/40 bg-red-500/10 px-1 py-2 text-[10px] font-semibold text-red-200 transition-colors hover:border-red-400 hover:bg-red-500/20 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+          title="取消当前运行"
+          aria-label="取消当前运行"
+        >
+          {cancelWorkflowRunMutation.isPending ? (
+            <Loader2 size={15} className="animate-spin" />
+          ) : (
+            <OctagonX size={15} />
+          )}
+          <span className="mt-1 leading-none">取消</span>
+        </button>
+      ) : null}
       <div className="my-1 h-px w-8 self-center bg-slate-700/80" />
       {ADD_NODE_OPTIONS.map((option) => (
         <button
@@ -908,7 +979,10 @@ export function ProductDetailPage() {
                         onRun={() => void handleRunWorkflow(node.id)}
                         onDelete={() => handleDeleteNode(node)}
                         busy={structureBusy}
-                        runBusy={runBusy}
+                        runActionState={getWorkflowNodeRunActionState(node, {
+                          runSubmissionPending,
+                          pendingStartNodeId,
+                        })}
                       />
                     ))}
                   </div>
@@ -1049,7 +1123,10 @@ export function ProductDetailPage() {
                       onUploadImage={(file) => uploadNodeImageMutation.mutate(file)}
                       onDelete={() => handleDeleteNode(selectedNode)}
                       busy={structureBusy}
-                      runBusy={runBusy}
+                      runActionState={getWorkflowNodeRunActionState(selectedNode, {
+                        runSubmissionPending,
+                        pendingStartNodeId,
+                      })}
                     />
                   ) : (
                     <div className="text-xs text-zinc-500">
@@ -1057,7 +1134,15 @@ export function ProductDetailPage() {
                     </div>
                   )
                 ) : null}
-                {activeSidebarTab === "runs" ? <RunsPanel workflow={workflow} latestRun={latestRun} /> : null}
+                {activeSidebarTab === "runs" ? (
+                  <RunsPanel
+                    workflow={workflow}
+                    latestRun={latestRun}
+                    busyRunId={workflowRunActionBusyRunId ?? null}
+                    onCancelRun={handleCancelWorkflowRun}
+                    onRetryRun={handleRetryWorkflowRun}
+                  />
+                ) : null}
                 {activeSidebarTab === "images" ? (
                   <ImagesPanel
                     product={product}

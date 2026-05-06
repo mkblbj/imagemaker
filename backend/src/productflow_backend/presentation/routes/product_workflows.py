@@ -5,12 +5,14 @@ from sqlalchemy.orm import Session
 
 from productflow_backend.application.product_workflows import (
     bind_workflow_node_image,
+    cancel_product_workflow_run,
     create_workflow_edge,
     create_workflow_node,
     delete_workflow_edge,
     delete_workflow_node,
     get_or_create_product_workflow,
     get_product_workflow_status,
+    retry_product_workflow_run,
     submit_product_workflow_run,
     update_workflow_copy_set,
     update_workflow_node,
@@ -217,6 +219,36 @@ def run_product_workflow_endpoint(
             product_id=product_id,
             start_node_id=payload.start_node_id if payload else None,
         )
+    except ValueError as exc:
+        raise_value_error_as_http(exc)
+    return serialize_product_workflow(workflow)
+
+
+@router.post("/products/{product_id}/workflow/runs/{run_id}/cancel", response_model=ProductWorkflowResponse)
+def cancel_product_workflow_run_endpoint(
+    product_id: str,
+    run_id: str,
+    session: Session = Depends(get_session),
+) -> ProductWorkflowResponse:
+    try:
+        workflow = cancel_product_workflow_run(session, product_id=product_id, run_id=run_id)
+    except ValueError as exc:
+        raise_value_error_as_http(exc)
+    return serialize_product_workflow(workflow)
+
+
+@router.post(
+    "/products/{product_id}/workflow/runs/{run_id}/retry",
+    response_model=ProductWorkflowResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def retry_product_workflow_run_endpoint(
+    product_id: str,
+    run_id: str,
+    session: Session = Depends(get_session),
+) -> ProductWorkflowResponse:
+    try:
+        workflow = retry_product_workflow_run(session, product_id=product_id, run_id=run_id)
     except ValueError as exc:
         raise_value_error_as_http(exc)
     return serialize_product_workflow(workflow)

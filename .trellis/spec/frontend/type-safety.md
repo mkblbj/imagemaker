@@ -41,11 +41,16 @@ String union types mirror backend enums:
 
 ```ts
 export type ProductWorkflowState = "draft" | "copy_ready" | "poster_ready" | "failed";
-export type JobStatus = "queued" | "running" | "succeeded" | "failed";
+export type JobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
 ```
 
 If backend enum values in `backend/src/productflow_backend/domain/enums.py` change, update these unions and all UI maps
 such as `StatusPill.tsx::CONFIG`.
+
+Workflow run DTOs mirror backend run action metadata. When the backend adds `is_retryable`, `is_cancelable`, or queue
+fields (`queue_active_count`, `queue_running_count`, `queue_queued_count`, `queue_max_concurrent_tasks`,
+`queued_ahead_count`, `queue_position`), update both `WorkflowRun` and `WorkflowRunStatusSummary` because full detail and
+lightweight status polling merge through the same cache.
 
 ---
 

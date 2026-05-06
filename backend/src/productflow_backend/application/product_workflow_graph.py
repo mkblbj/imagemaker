@@ -6,6 +6,11 @@ from typing import Any
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session, load_only, selectinload
 
+from productflow_backend.application.admission import (
+    get_generation_queue_overview,
+    get_queued_generation_positions,
+    get_workflow_run_queue_metadata,
+)
 from productflow_backend.domain.enums import WorkflowNodeType
 from productflow_backend.domain.errors import NotFoundError
 from productflow_backend.domain.workflow_rules import WorkflowRuleEdge, WorkflowRuleNode, topological_node_ids
@@ -76,13 +81,29 @@ def get_workflow_or_raise(session: Session, workflow_id: str) -> ProductWorkflow
     workflow = session.scalar(workflow_query().where(ProductWorkflow.id == workflow_id))
     if workflow is None:
         raise NotFoundError("工作流不存在")
+    attach_workflow_run_queue_metadata(session, workflow.runs)
     return workflow
 
 
 def get_active_workflow(session: Session, product_id: str) -> ProductWorkflow | None:
-    return session.scalar(
+    workflow = session.scalar(
         workflow_query().where(ProductWorkflow.product_id == product_id, ProductWorkflow.active.is_(True))
     )
+    if workflow is not None:
+        attach_workflow_run_queue_metadata(session, workflow.runs)
+    return workflow
+
+
+def attach_workflow_run_queue_metadata(session: Session, runs: list[WorkflowRun]) -> None:
+    overview = get_generation_queue_overview(session)
+    queued_positions = get_queued_generation_positions(session)
+    for run in runs:
+        run.__dict__["_queue_metadata"] = get_workflow_run_queue_metadata(
+            session,
+            run,
+            overview=overview,
+            queued_positions=queued_positions,
+        )
 
 
 def get_active_workflow_status(session: Session, product_id: str) -> ProductWorkflowStatusSnapshot:
@@ -136,6 +157,7 @@ def get_active_workflow_status(session: Session, product_id: str) -> ProductWork
             .limit(10)
         )
     )
+    attach_workflow_run_queue_metadata(session, runs)
     return ProductWorkflowStatusSnapshot(workflow=workflow, nodes=nodes, runs=runs)
 
 

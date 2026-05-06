@@ -185,7 +185,8 @@ Keep the template as node and edge specs so application code can persist visible
 - Legacy PostgreSQL databases may already have older enum values. Forward migrations must safely add `reference_image`
   and migrate old image-slot rows to it; fresh databases should create only the supported simplified node values.
 - Node status values are `idle`, `queued`, `running`, `succeeded`, `failed`; run status values are
-  `running`, `succeeded`, `failed`.
+  `running`, `succeeded`, `failed`, `cancelled`. Any run-status enum expansion must include an Alembic revision that
+  adds the PostgreSQL enum value while remaining a no-op for SQLite test databases.
 - Active workflow status polling must use `GET /api/products/{product_id}/workflow/status`, not repeated full workflow
   detail loads. The status endpoint returns workflow identity/timestamps, node status fields, latest run status fields,
   and node-run status fields only; it must not serialize edges, node `config_json`, node `output_json`, or node-run
@@ -525,6 +526,10 @@ and workflow runs share the same behavior.
 - APIs:
   - `POST /api/products/{product_id}/workflow/run` returns `ProductWorkflowResponse` after creating or reusing an active
     `workflow_runs` row; it must not wait for provider execution to finish.
+  - `POST /api/products/{product_id}/workflow/runs/{run_id}/cancel` returns `ProductWorkflowResponse` after durably
+    marking an active run `cancelled`.
+  - `POST /api/products/{product_id}/workflow/runs/{run_id}/retry` returns `202 Accepted` after creating/enqueueing a new
+    run from a failed run.
   - `DELETE /api/workflow-nodes/{node_id}` returns `ProductWorkflowResponse` after deleting the node and connected edges.
   - `DELETE /api/products/{product_id}` returns `204 No Content` after deleting the product and related persisted data.
 - Application entrypoints:
@@ -533,8 +538,10 @@ and workflow runs share the same behavior.
   - `delete_workflow_node(session, node_id) -> ProductWorkflow`.
   - `delete_product(session, product_id) -> str`.
 - Database:
-  - `workflow_runs` must enforce at most one `status = 'running'` row per `workflow_id`, using a partial unique index
-    such as `uq_workflow_runs_one_running_per_workflow`.
+  - `workflow_node_runs` must enforce at most one active row per `node_id` where `status IN ('queued', 'running')`,
+    using a partial unique index such as `uq_workflow_node_runs_one_active_per_node`.
+  - `workflow_runs` may contain multiple `status = 'running'` rows for the same `workflow_id` when their active
+    node-run sets are disjoint.
 
 ### 3. Contracts
 
@@ -545,20 +552,35 @@ and workflow runs share the same behavior.
      own database session.
 - `workflow_runs` is the authoritative state for workflow execution. Redis/Dramatiq messages are recoverable delivery
   attempts; do not use in-process executors or Web-process memory as the source of truth.
+- Manual cancel is a durable run-level transition to `cancelled` with `failure_reason = "已取消"`. Queued node runs are
+  released back to idle node state; a running node run is marked failed with the same cancel reason because node statuses
+  intentionally keep the existing five-value contract.
+- Failed workflow runs are retryable through a new run. Retry must not create a duplicate run while any active run already
+  owns a queued/running node run in the retry plan.
+- Run responses and lightweight status responses expose `is_retryable`, `is_cancelable`, `queue_active_count`,
+  `queue_running_count`, `queue_queued_count`, `queue_max_concurrent_tasks`, `queued_ahead_count`, and `queue_position`.
+  Queue position for workflow runs is derived from queued node-run state, not Redis delivery metadata.
 - API startup must call workflow run recovery for active runs with no node currently running, so a run committed before a
   Redis send or process restart is sent again.
 - Worker startup may reset stale `workflow_node_runs.status = 'running'` rows back to `queued` before re-enqueueing their
   parent run. Do not reset recent running nodes on API startup because another worker may still be executing them.
-- Duplicate kickoff for the same active workflow must return the existing active workflow/run state or be caught by the
-  database uniqueness guard and converted back into `created=False`; it must not silently create duplicate provider calls.
+- Duplicate kickoff for the same active node set must return the existing active workflow/run state or be caught by the
+  node-run database uniqueness guard and converted back into `created=False`; it must not silently create duplicate
+  provider calls for the same node.
+- Kickoff for a selected node set that is disjoint from every active run's queued/running node runs may create a separate
+  `running` workflow run for the same workflow. A full-workflow kickoff overlaps every node and therefore still reuses an
+  existing active run when any node is active.
 - Duplicate Redis messages must be idempotent:
-  - terminal workflow runs (`succeeded` / `failed`) are no-ops;
+  - terminal workflow runs (`succeeded` / `failed` / `cancelled`) are no-ops;
   - runs that already have a non-stale `running` node run are no-ops;
   - claiming a queued node run must be an atomic conditional update so two workers cannot execute the same provider call.
 - Background execution must persist every decisive transition: node run `queued -> running -> succeeded/failed`, node
   status, workflow run `succeeded/failed`, output JSON, artifact IDs, `failure_reason`, and `finished_at`.
 - Any exception inside or around the background execution boundary must mark the run `failed`; do not leave a stale
   `running` row that causes indefinite frontend polling.
+- If all global generation running slots are occupied when a workflow worker tries to claim the next queued node run, the
+  worker must leave that node run `queued`, avoid provider calls, and schedule delayed delivery retry. Starting the run
+  itself should still succeed and show queued metadata instead of returning a submit-time busy error.
 - Generated-mode workflow image provider calls must be bounded by
   `workflow_image_generation_provider_timeout_seconds`; timeout or provider failure must fail the run/node with a stable
   safe user-facing reason and must not persist provider keys, base URLs, raw prompts, request bodies, or tracebacks in
@@ -573,9 +595,21 @@ and workflow runs share the same behavior.
 ### 4. Validation & Error Matrix
 
 - Missing product/workflow/node -> `404`.
-- Starting a run while one is already active -> return existing active workflow state; do not create a second active run.
-- Concurrent duplicate active-run insert hits the partial unique index -> rollback, reload existing active run, return it.
-- Redis enqueue failure after the run has been created -> mark the run `failed`, release the active-run uniqueness guard,
+- Starting a run whose planned node set overlaps an active run's queued/running node runs -> return existing active
+  workflow state; do not create duplicate active node runs.
+- Starting a selected-node run whose planned node set is disjoint from active node runs -> create/enqueue a separate
+  `running` workflow run for the same workflow.
+- Cancelling an active run -> persist `status = 'cancelled'`, set `finished_at`, release queued nodes from queued/running
+  UI state, and make duplicate worker delivery a no-op.
+- Cancelling a terminal succeeded/failed run -> `400`, `已结束的工作流运行不能取消`.
+- Retrying a failed run while no active run exists -> create/enqueue a new run and keep the failed run retryable in
+  history.
+- Retrying while another active run owns any retry-plan node -> `400`, `相关节点运行中，不能重试`.
+- Concurrent duplicate active node-run insert hits the partial unique index -> rollback, reload existing overlapping
+  active run, return it.
+- Global running capacity full during worker claim -> keep the workflow run `running`, keep the next node run `queued`, do
+  not call providers, and enqueue delayed retry of the same `workflow_run_id`.
+- Redis enqueue failure after the run has been created -> mark the run `failed`, release active node-run uniqueness slots,
   and return `503` with `任务队列暂不可用，请稍后重试`.
 - Workflow image provider timeout -> mark the active run and image node run `failed`, set `finished_at`, use
   `图片生成超时，请稍后重试`, and release global generation queue capacity.
@@ -593,7 +627,9 @@ and workflow runs share the same behavior.
 
 - Good: `POST /workflow/run` returns quickly with `runs[0].status == "running"` and queued node statuses; polling later
   observes success/failure written by `execute_product_workflow_run`.
-- Good: two concurrent run requests for the same workflow result in one active run and one provider execution path.
+- Good: two duplicate run requests for the same selected node result in one active run and one provider execution path.
+- Good: two selected-node run requests for graph-disjoint nodes can create two active workflow runs, while the database
+  still prevents the same node from being queued/running twice.
 - Good: deleting a workflow node removes that node plus connected edges, and a refreshed workflow response contains no
   broken edge references.
 - Base: deleting a product with completed workflow history cascades workflow rows and then best-effort removes
@@ -606,8 +642,10 @@ and workflow runs share the same behavior.
 
 - API regression for run kickoff asserts the initial response is `running` / `queued`, then waits/polls until the
   background execution writes terminal status and artifacts.
-- Duplicate active-run regression asserts a second kickoff returns/reuses the same active run and that direct duplicate
-  database insertion violates the unique active-run guard.
+- Duplicate active-node regression asserts a second kickoff for the same planned node set returns/reuses the same active
+  run and that direct duplicate node-run insertion violates the unique active-node guard.
+- Disjoint active-node regression asserts two selected-node kickoffs with no shared required nodes create distinct running
+  workflow runs.
 - Failure-path regression should force execution failure and assert stale `running` runs are marked `failed`.
 - Workflow image-generation regressions should cover provider timeout cleanup, safe provider-failure reason sanitization,
   and the `run_product_workflow_run` actor failsafe `time_limit`.
@@ -617,7 +655,9 @@ and workflow runs share the same behavior.
 - Node deletion regression asserts connected edges and node runs are removed and active-run deletion is rejected.
 - Product deletion regression asserts completed products are deleted, direct detail fetch returns `404`, and active
   workflow runs block deletion with the expected concise error.
-- Alembic upgrade must create the active-run unique index and first close historical duplicate running rows if present.
+- Alembic upgrade must replace the workflow-level active-run unique index with the active node-run unique index and first
+  close historical duplicate queued/running node-run rows if present. Downgrade must close duplicate running workflow runs
+  before restoring the workflow-level unique index.
 
 ### 7. Wrong vs Correct
 
@@ -651,22 +691,22 @@ session.add(WorkflowRun(workflow_id=workflow.id, status=WorkflowRunStatus.RUNNIN
 session.commit()
 ```
 
-The application-level check can race with another request before commit.
+The workflow-level check blocks disjoint node runs and can still race with another request before commit.
 
 #### Correct
 
 ```python
 Index(
-    "uq_workflow_runs_one_running_per_workflow",
-    "workflow_id",
+    "uq_workflow_node_runs_one_active_per_node",
+    "node_id",
     unique=True,
-    postgresql_where=text("status = 'running'"),
-    sqlite_where=text("status = 'running'"),
+    postgresql_where=text("status IN ('queued', 'running')"),
+    sqlite_where=text("status IN ('queued', 'running')"),
 )
 ```
 
-Keep the application check for normal control flow, but enforce the invariant in the database and handle `IntegrityError`
-by reloading the existing active run.
+Plan the node IDs first, reuse only overlapping active runs for normal control flow, enforce the same-node active invariant
+in the database, and handle `IntegrityError` by reloading the existing overlapping active run.
 
 ## Scenario: Product context singleton and direct image generation
 

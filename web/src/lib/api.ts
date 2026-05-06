@@ -227,6 +227,9 @@ export const api = {
   retryImageSessionGenerationTask(sessionId: string, taskId: string): Promise<ImageSessionDetail> {
     return request(`/api/image-sessions/${sessionId}/generation-tasks/${taskId}/retry`, { method: "POST" });
   },
+  cancelImageSessionGenerationTask(sessionId: string, taskId: string): Promise<ImageSessionDetail> {
+    return request(`/api/image-sessions/${sessionId}/generation-tasks/${taskId}/cancel`, { method: "POST" });
+  },
   attachImageSessionAssetToProduct(
     sessionId: string,
     assetId: string,
@@ -333,5 +336,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify(input ?? {}),
     });
+  },
+  cancelProductWorkflowRun(productId: string, runId: string): Promise<ProductWorkflow> {
+    return request(`/api/products/${productId}/workflow/runs/${runId}/cancel`, { method: "POST" });
+  },
+  retryProductWorkflowRun(productId: string, runId: string): Promise<ProductWorkflow> {
+    return request(`/api/products/${productId}/workflow/runs/${runId}/retry`, { method: "POST" });
   },
 };

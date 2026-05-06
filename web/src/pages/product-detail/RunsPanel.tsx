@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FileText, Layers3 } from "lucide-react";
+import { FileText, Loader2, OctagonX, RotateCcw, Layers3 } from "lucide-react";
 
 import { PromptPreviewDialog, type PromptPreview } from "../../components/PromptPreviewDialog";
 import { formatDateTime } from "../../lib/format";
@@ -10,23 +10,39 @@ const RUN_STATUS_LABELS: Record<WorkflowRunStatus, string> = {
   running: "运行中",
   succeeded: "成功",
   failed: "失败",
+  cancelled: "已取消",
 };
 
 const RUN_STATUS_CLASS_NAMES: Record<WorkflowRunStatus, string> = {
   running: "border-blue-200 bg-blue-50 text-blue-700",
   succeeded: "border-emerald-200 bg-emerald-50 text-emerald-700",
   failed: "border-red-200 bg-red-50 text-red-700",
+  cancelled: "border-zinc-200 bg-zinc-50 text-zinc-600",
 };
 
 const RUN_STATUS_DOT_CLASS_NAMES: Record<WorkflowRunStatus, string> = {
   running: "bg-blue-500 shadow-blue-500/30",
   succeeded: "bg-emerald-500 shadow-emerald-500/30",
   failed: "bg-red-500 shadow-red-500/30",
+  cancelled: "bg-zinc-400 shadow-zinc-400/30",
 };
 
 interface RunsPanelProps {
   workflow: ProductWorkflow | null;
   latestRun: ProductWorkflow["runs"][number] | null;
+  busyRunId: string | null;
+  onCancelRun: (run: WorkflowRun) => void;
+  onRetryRun: (run: WorkflowRun) => void;
+}
+
+function workflowRunQueueText(run: WorkflowRun): string {
+  if (run.queue_position) {
+    return `排队第 ${run.queue_position} 位，前方 ${run.queued_ahead_count ?? 0} 个；全局活跃 ${run.queue_active_count}/${run.queue_max_concurrent_tasks}。`;
+  }
+  if (run.status === "running") {
+    return `全局运行 ${run.queue_running_count} 个，排队 ${run.queue_queued_count} 个。`;
+  }
+  return "";
 }
 
 function imagePromptItems(
@@ -52,7 +68,7 @@ function imagePromptItems(
   });
 }
 
-export function RunsPanel({ workflow, latestRun }: RunsPanelProps) {
+export function RunsPanel({ workflow, latestRun, busyRunId, onCancelRun, onRetryRun }: RunsPanelProps) {
   const [promptPreview, setPromptPreview] = useState<PromptPreview | null>(null);
 
   return (
@@ -71,6 +87,8 @@ export function RunsPanel({ workflow, latestRun }: RunsPanelProps) {
         <div className="space-y-2">
           {workflow.runs.map((run) => {
             const promptItems = imagePromptItems(workflow, run);
+            const queueText = workflowRunQueueText(run);
+            const runBusy = busyRunId === run.id;
             return (
               <div
                 key={run.id}
@@ -115,15 +133,58 @@ export function RunsPanel({ workflow, latestRun }: RunsPanelProps) {
                         </div>
                       ) : null}
                       {run.failure_reason ? (
-                        <div className="mt-2 line-clamp-2 rounded-lg border border-red-100 bg-red-50 px-2.5 py-1.5 text-red-700">
+                        <div
+                          className={`mt-2 line-clamp-2 rounded-lg border px-2.5 py-1.5 ${
+                            run.status === "cancelled"
+                              ? "border-zinc-100 bg-zinc-50 text-zinc-600"
+                              : "border-red-100 bg-red-50 text-red-700"
+                          }`}
+                        >
                           {run.failure_reason}
                         </div>
                       ) : null}
+                      {queueText ? <div className="mt-2 text-[11px] leading-5 text-zinc-500">{queueText}</div> : null}
                     </div>
                   </div>
-                  <div className="shrink-0 text-right text-[10px] leading-relaxed text-zinc-400">
-                    <div>{formatDateTime(run.started_at)}</div>
-                    {run.finished_at ? <div>完成 {formatDateTime(run.finished_at)}</div> : null}
+                  <div className="flex shrink-0 flex-col items-end gap-2 text-right text-[10px] leading-relaxed text-zinc-400">
+                    <div>
+                      <div>{formatDateTime(run.started_at)}</div>
+                      {run.finished_at ? <div>完成 {formatDateTime(run.finished_at)}</div> : null}
+                    </div>
+                    {run.is_cancelable || run.is_retryable ? (
+                      <div className="flex items-center gap-1.5">
+                        {run.is_retryable ? (
+                          <button
+                            type="button"
+                            onClick={() => onRetryRun(run)}
+                            disabled={runBusy}
+                            className="inline-flex items-center rounded-lg border border-zinc-200 bg-white px-2 py-1 text-[11px] font-medium text-zinc-600 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-700 disabled:opacity-60"
+                          >
+                            {runBusy ? (
+                              <Loader2 size={12} className="mr-1 animate-spin" />
+                            ) : (
+                              <RotateCcw size={12} className="mr-1" />
+                            )}
+                            重试
+                          </button>
+                        ) : null}
+                        {run.is_cancelable ? (
+                          <button
+                            type="button"
+                            onClick={() => onCancelRun(run)}
+                            disabled={runBusy}
+                            className="inline-flex items-center rounded-lg border border-zinc-200 bg-white px-2 py-1 text-[11px] font-medium text-red-600 transition-colors hover:border-red-200 hover:bg-red-50 disabled:opacity-60"
+                          >
+                            {runBusy ? (
+                              <Loader2 size={12} className="mr-1 animate-spin" />
+                            ) : (
+                              <OctagonX size={12} className="mr-1" />
+                            )}
+                            取消
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </div>

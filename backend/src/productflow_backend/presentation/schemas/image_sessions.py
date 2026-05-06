@@ -73,6 +73,7 @@ class ImageSessionGenerationTaskResponse(BaseModel):
     provider_notes: list[str] = Field(default_factory=list)
     attempts: int
     is_retryable: bool
+    is_cancelable: bool
     created_at: datetime
     started_at: datetime | None = None
     finished_at: datetime | None = None
@@ -272,6 +273,7 @@ def serialize_image_session_generation_task(
         provider_notes=provider_notes or [],
         attempts=task.attempts,
         is_retryable=task.is_retryable,
+        is_cancelable=IMAGE_SESSION_GENERATION_TASK_CONTRACT.is_active(task.status),
         created_at=task.created_at,
         started_at=task.started_at,
         finished_at=task.finished_at,

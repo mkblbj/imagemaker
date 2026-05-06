@@ -18,6 +18,7 @@ import {
 } from "./constants";
 import type { CanvasPoint } from "./types";
 import {
+  type WorkflowNodeRunActionState,
   imageWorkflowNodeWaitingLabel,
   isImageWorkflowNodeWaiting,
   statusClass,
@@ -42,7 +43,7 @@ interface WorkflowNodeCardProps {
   onRun: () => void;
   onDelete: () => void;
   busy: boolean;
-  runBusy: boolean;
+  runActionState: WorkflowNodeRunActionState;
 }
 
 export function WorkflowNodeCard({
@@ -63,7 +64,7 @@ export function WorkflowNodeCard({
   onRun,
   onDelete,
   busy,
-  runBusy,
+  runActionState,
 }: WorkflowNodeCardProps) {
   const icon = {
     product_context: FileText,
@@ -183,15 +184,17 @@ export function WorkflowNodeCard({
               type="button"
               data-node-action
               onClick={onRun}
-              disabled={runBusy}
+              disabled={runActionState.disabled}
               className="inline-flex items-center rounded border border-zinc-200 px-2 py-1 text-[11px] font-medium text-zinc-600 hover:border-zinc-900 hover:text-zinc-900 disabled:opacity-50"
+              title={runActionState.title}
+              aria-label={`${node.title} ${runActionState.label}`}
             >
-              {runBusy ? (
+              {runActionState.pending ? (
                 <Loader2 size={11} className="mr-1 animate-spin" />
               ) : (
                 <Play size={11} className="mr-1" />
               )}
-              运行
+              {runActionState.label}
             </button>
           </div>
         ) : null}

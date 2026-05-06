@@ -15,7 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from productflow_backend.application import product_workflow_graph
-from productflow_backend.application.admission import ensure_generation_capacity
+from productflow_backend.application.admission import ensure_generation_capacity, generation_running_capacity_available
 from productflow_backend.application.contracts import PosterGenerationInput, ProductInput
 from productflow_backend.application.image_generation_core import build_stored_image_reference_payload
 from productflow_backend.application.product_workflow_artifacts import (
@@ -60,7 +60,7 @@ from productflow_backend.domain.enums import (
     WorkflowNodeType,
     WorkflowRunStatus,
 )
-from productflow_backend.domain.errors import BusinessValidationError
+from productflow_backend.domain.errors import BusinessValidationError, NotFoundError
 from productflow_backend.domain.workflow_rules import (
     WorkflowRuleEdge,
     WorkflowRuleNode,
@@ -80,13 +80,15 @@ from productflow_backend.infrastructure.db.models import (
 )
 from productflow_backend.infrastructure.db.session import get_session_factory
 from productflow_backend.infrastructure.image.base import ImageProvider, infer_extension
-from productflow_backend.infrastructure.queue import enqueue_workflow_run
+from productflow_backend.infrastructure.queue import enqueue_workflow_run, enqueue_workflow_run_later
 from productflow_backend.infrastructure.storage import LocalStorage
 
 logger = logging.getLogger(__name__)
 WORKFLOW_IMAGE_GENERATION_FAILURE = "图片生成失败，请稍后重试"
 WORKFLOW_IMAGE_GENERATION_TIMEOUT_FAILURE = "图片生成超时，请稍后重试"
 WORKFLOW_WORKER_TIMEOUT_FAILURE = "工作流执行超时，请稍后重试"
+WORKFLOW_CANCELLED_REASON = "已取消"
+PRODUCT_WORKFLOW_CAPACITY_RETRY_DELAY_MS = 2000
 
 
 class WorkflowSafeExecutionError(RuntimeError):
@@ -143,12 +145,34 @@ class WorkflowRunKickoff:
     should_enqueue: bool
 
 
+@dataclass(frozen=True, slots=True)
+class _WorkflowNodeRunClaimResult:
+    claimed: bool
+    should_requeue: bool = False
+
+
 def _active_workflow_run(workflow: ProductWorkflow) -> WorkflowRun | None:
     return next(
         (
             run
             for run in sorted(workflow.runs, key=lambda item: item.started_at, reverse=True)
             if WORKFLOW_RUN_GENERATION_TASK_CONTRACT.is_running(run.status)
+        ),
+        None,
+    )
+
+
+def _workflow_run_overlaps_nodes(run: WorkflowRun, node_ids: set[str]) -> bool:
+    return any(node_run.node_id in node_ids for node_run in run.node_runs)
+
+
+def _active_workflow_run_for_nodes(workflow: ProductWorkflow, node_ids: set[str]) -> WorkflowRun | None:
+    return next(
+        (
+            run
+            for run in sorted(workflow.runs, key=lambda item: item.started_at, reverse=True)
+            if WORKFLOW_RUN_GENERATION_TASK_CONTRACT.is_active(run.status)
+            and _workflow_run_overlaps_nodes(run, node_ids)
         ),
         None,
     )
@@ -167,6 +191,33 @@ def _workflow_run_should_enqueue(run: WorkflowRun) -> bool:
     )
 
 
+def _latest_failed_workflow_run(workflow: ProductWorkflow) -> WorkflowRun | None:
+    return next(
+        (
+            run
+            for run in sorted(workflow.runs, key=lambda item: item.started_at, reverse=True)
+            if run.status == WorkflowRunStatus.FAILED
+        ),
+        None,
+    )
+
+
+def _workflow_run_retry_start_node_id(run: WorkflowRun) -> str | None:
+    started_node_ids = {
+        node_run.node_id
+        for node_run in run.node_runs
+        if node_run.status != WorkflowNodeStatus.FAILED or node_run.failure_reason != "上游节点失败"
+    }
+    if not started_node_ids:
+        return None
+    workflow = run.workflow
+    ordered_nodes = product_workflow_graph.topological_nodes(workflow)
+    ordered_started_nodes = [node for node in ordered_nodes if node.id in started_node_ids]
+    if not ordered_started_nodes or len(ordered_started_nodes) == len(ordered_nodes):
+        return None
+    return ordered_started_nodes[-1].id
+
+
 def start_product_workflow_run(
     session: Session,
     *,
@@ -174,7 +225,11 @@ def start_product_workflow_run(
     start_node_id: str | None = None,
 ) -> WorkflowRunKickoff:
     workflow = get_or_create_product_workflow(session, product_id)
-    active_run = _active_workflow_run(workflow)
+    ordered_nodes = product_workflow_graph.topological_nodes(workflow)
+    node_ids_to_run = _node_ids_to_run(session, workflow, start_node_id)
+    if not node_ids_to_run:
+        raise BusinessValidationError("工作流没有可运行节点")
+    active_run = _active_workflow_run_for_nodes(workflow, node_ids_to_run)
     if active_run is not None:
         return WorkflowRunKickoff(
             workflow=workflow,
@@ -182,11 +237,6 @@ def start_product_workflow_run(
             created=False,
             should_enqueue=_workflow_run_should_enqueue(active_run),
         )
-
-    ordered_nodes = product_workflow_graph.topological_nodes(workflow)
-    node_ids_to_run = _node_ids_to_run(session, workflow, start_node_id)
-    if not node_ids_to_run:
-        raise BusinessValidationError("工作流没有可运行节点")
 
     ensure_generation_capacity(session)
     run = WorkflowRun(workflow_id=workflow.id, status=WorkflowRunStatus.RUNNING)
@@ -217,7 +267,7 @@ def start_product_workflow_run(
     except IntegrityError:
         session.rollback()
         workflow = product_workflow_graph.get_workflow_or_raise(session, workflow.id)
-        active_run = _active_workflow_run(workflow)
+        active_run = _active_workflow_run_for_nodes(workflow, node_ids_to_run)
         if active_run is not None:
             return WorkflowRunKickoff(
                 workflow=workflow,
@@ -233,6 +283,50 @@ def start_product_workflow_run(
         created=True,
         should_enqueue=True,
     )
+
+
+def retry_product_workflow_run(
+    session: Session,
+    *,
+    product_id: str,
+    run_id: str | None = None,
+    enqueue: Callable[[str], None] | None = None,
+) -> ProductWorkflow:
+    workflow = get_or_create_product_workflow(session, product_id)
+    run = session.get(WorkflowRun, run_id) if run_id else _latest_failed_workflow_run(workflow)
+    if run is None or run.workflow_id != workflow.id:
+        raise NotFoundError("工作流运行不存在")
+    if run.status != WorkflowRunStatus.FAILED:
+        raise BusinessValidationError("只有失败的工作流运行可以重试")
+    start_node_id = _workflow_run_retry_start_node_id(run)
+    node_ids_to_run = _node_ids_to_run(session, workflow, start_node_id)
+    if _active_workflow_run_for_nodes(workflow, node_ids_to_run) is not None:
+        raise BusinessValidationError("相关节点运行中，不能重试")
+    return submit_product_workflow_run(
+        session,
+        product_id=product_id,
+        start_node_id=start_node_id,
+        enqueue=enqueue,
+    )
+
+
+def cancel_product_workflow_run(
+    session: Session,
+    *,
+    product_id: str,
+    run_id: str | None = None,
+) -> ProductWorkflow:
+    workflow = get_or_create_product_workflow(session, product_id)
+    run = session.get(WorkflowRun, run_id) if run_id else _active_workflow_run(workflow)
+    if run is None or run.workflow_id != workflow.id:
+        raise NotFoundError("工作流运行不存在")
+    if run.status == WorkflowRunStatus.CANCELLED:
+        return product_workflow_graph.get_workflow_or_raise(session, workflow.id)
+    if run.status in {WorkflowRunStatus.SUCCEEDED, WorkflowRunStatus.FAILED}:
+        raise BusinessValidationError("已结束的工作流运行不能取消")
+    _mark_workflow_run_cancelled(session, run_id=run.id)
+    session.expire_all()
+    return product_workflow_graph.get_workflow_or_raise(session, workflow.id)
 
 
 def run_product_workflow(
@@ -328,6 +422,11 @@ def _execute_product_workflow_run(
         return
 
     for ordered_node in ordered_nodes:
+        session.expire(run, ["status"])
+        if run.status == WorkflowRunStatus.CANCELLED:
+            return
+        if not WORKFLOW_RUN_GENERATION_TASK_CONTRACT.is_running(run.status):
+            return
         if ordered_node.id not in run_node_ids:
             continue
         node = queries.get_node_or_raise(ordered_node.id)
@@ -339,7 +438,10 @@ def _execute_product_workflow_run(
             return
         if not WORKFLOW_RUN_GENERATION_TASK_CONTRACT.execution_is_queued(node_run.status):
             continue
-        if not _claim_workflow_node_run(session, node_run_id=node_run.id, node_id=node.id):
+        claim = _claim_workflow_node_run(session, node_run_id=node_run.id, node_id=node.id)
+        if not claim.claimed:
+            if claim.should_requeue:
+                _requeue_workflow_run_after_capacity_wait(run_id)
             return
         node = queries.get_node_or_raise(ordered_node.id)
         node_run = session.get(WorkflowNodeRun, node_run.id)
@@ -370,6 +472,15 @@ def _execute_product_workflow_run(
                 failed_node_id=ordered_node.id,
                 reason=_safe_workflow_failure_reason(exc)[:1000],
             )
+            return
+
+        session.refresh(run)
+        session.refresh(node_run)
+        if run.status == WorkflowRunStatus.CANCELLED:
+            session.rollback()
+            return
+        if not WORKFLOW_RUN_GENERATION_TASK_CONTRACT.execution_is_running(node_run.status):
+            session.rollback()
             return
 
         node.output_json = output
@@ -403,10 +514,13 @@ def _execute_product_workflow_run(
     session.commit()
 
 
-def _claim_workflow_node_run(session: Session, *, node_run_id: str, node_id: str) -> bool:
+def _claim_workflow_node_run(session: Session, *, node_run_id: str, node_id: str) -> _WorkflowNodeRunClaimResult:
     """Atomically claim one queued node run so duplicate Dramatiq messages do not execute it twice."""
 
     now = now_utc()
+    if not generation_running_capacity_available(session):
+        session.commit()
+        return _WorkflowNodeRunClaimResult(claimed=False, should_requeue=True)
     result = cast(
         CursorResult[Any],
         session.execute(
@@ -420,14 +534,21 @@ def _claim_workflow_node_run(session: Session, *, node_run_id: str, node_id: str
     )
     if result.rowcount != 1:
         session.rollback()
-        return False
+        return _WorkflowNodeRunClaimResult(claimed=False)
     session.execute(
         update(WorkflowNode)
         .where(WorkflowNode.id == node_id)
         .values(status=WorkflowNodeStatus.RUNNING, failure_reason=None, last_run_at=now)
     )
     session.commit()
-    return True
+    return _WorkflowNodeRunClaimResult(claimed=True)
+
+
+def _requeue_workflow_run_after_capacity_wait(run_id: str) -> None:
+    try:
+        enqueue_workflow_run_later(run_id, delay_ms=PRODUCT_WORKFLOW_CAPACITY_RETRY_DELAY_MS)
+    except Exception:  # noqa: BLE001
+        logger.exception("商品工作流等待并发容量后重新入队失败: workflow_run_id=%s", run_id)
 
 
 def _mark_workflow_run_failed(
@@ -439,6 +560,8 @@ def _mark_workflow_run_failed(
 ) -> None:
     persisted_run = session.get(WorkflowRun, run_id)
     if persisted_run is None:
+        return
+    if WORKFLOW_RUN_GENERATION_TASK_CONTRACT.is_terminal(persisted_run.status):
         return
     now = now_utc()
     if failed_node_id is not None:
@@ -471,6 +594,38 @@ def _mark_workflow_run_failed(
     logger.warning("工作流运行失败: run_id=%s failed_node_id=%s reason=%s", run_id, failed_node_id, reason)
     persisted_run.status = WorkflowRunStatus.FAILED
     persisted_run.failure_reason = reason
+    persisted_run.finished_at = now
+    persisted_run.workflow.updated_at = now
+    session.commit()
+
+
+def _mark_workflow_run_cancelled(session: Session, *, run_id: str) -> None:
+    persisted_run = session.get(WorkflowRun, run_id)
+    if persisted_run is None:
+        return
+    if WORKFLOW_RUN_GENERATION_TASK_CONTRACT.is_terminal(persisted_run.status):
+        return
+    now = now_utc()
+    for node_run in persisted_run.node_runs:
+        if WORKFLOW_RUN_GENERATION_TASK_CONTRACT.execution_is_queued(node_run.status):
+            skipped_node = session.get(WorkflowNode, node_run.node_id)
+            if skipped_node is not None:
+                skipped_node.status = WorkflowNodeStatus.IDLE
+                skipped_node.failure_reason = None
+            node_run.status = WorkflowNodeStatus.FAILED
+            node_run.failure_reason = WORKFLOW_CANCELLED_REASON
+            node_run.finished_at = now
+        elif WORKFLOW_RUN_GENERATION_TASK_CONTRACT.execution_is_running(node_run.status):
+            running_node = session.get(WorkflowNode, node_run.node_id)
+            if running_node is not None:
+                running_node.status = WorkflowNodeStatus.FAILED
+                running_node.failure_reason = WORKFLOW_CANCELLED_REASON
+                running_node.last_run_at = now
+            node_run.status = WorkflowNodeStatus.FAILED
+            node_run.failure_reason = WORKFLOW_CANCELLED_REASON
+            node_run.finished_at = now
+    persisted_run.status = WorkflowRunStatus.CANCELLED
+    persisted_run.failure_reason = WORKFLOW_CANCELLED_REASON
     persisted_run.finished_at = now
     persisted_run.workflow.updated_at = now
     session.commit()

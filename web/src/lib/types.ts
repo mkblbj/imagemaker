@@ -125,6 +125,16 @@ export interface ProductHistory {
   poster_variants: PosterVariant[];
 }
 
+export interface CreateProductInput {
+  name: string;
+  category?: string;
+  price?: string;
+  source_note?: string;
+  canvas_template_key?: string;
+  file: File;
+  referenceFiles?: File[];
+}
+
 export interface WorkflowNode {
   id: string;
   workflow_id: string;

@@ -312,21 +312,36 @@ def _commerce_template(
     reference_role: str = "style",
     extra_image_node: bool = False,
 ) -> CanvasTemplate:
+    product_x = 48
+    product_y = 120 if reference_label is None else 184
+    reference_x = 48
+    reference_y = 54
+    copy_x = 320 if reference_label is None else 348
+    copy_y = 80 if reference_label is None else 112
+    image_x = 640 if reference_label is None else 668
+    image_y = 112
+    output_x = 960 if reference_label is None else 988
+    output_y = 66 if extra_image_node else 112
+    iteration_image_x = 1280 if reference_label is None else 1308
+    iteration_image_y = 188
+    iteration_output_x = 1600 if reference_label is None else 1628
+    iteration_output_y = 188
+
     nodes = [
         _node(
             "product",
             WorkflowNodeType.PRODUCT_CONTEXT,
             title="商品资料",
-            x=40,
-            y=120,
+            x=product_x,
+            y=product_y,
             config_json={},
         ),
         _node(
             "copy",
             WorkflowNodeType.COPY_GENERATION,
             title="电商文案",
-            x=320,
-            y=80,
+            x=copy_x,
+            y=copy_y,
             instruction_seed=copy_instruction,
         ),
     ]
@@ -341,8 +356,8 @@ def _commerce_template(
                 "reference",
                 WorkflowNodeType.REFERENCE_IMAGE,
                 title=reference_label,
-                x=320,
-                y=260,
+                x=reference_x,
+                y=reference_y,
                 config_json={"role": reference_role, "label": reference_label},
                 reference_input_hint=reference_description,
             )
@@ -363,8 +378,8 @@ def _commerce_template(
             "image",
             WorkflowNodeType.IMAGE_GENERATION,
             title="生成图片",
-            x=620,
-            y=120,
+            x=image_x,
+            y=image_y,
             instruction_seed=image_instruction,
             size=size,
         )
@@ -374,8 +389,8 @@ def _commerce_template(
             "output",
             WorkflowNodeType.REFERENCE_IMAGE,
             title=output_label,
-            x=920,
-            y=120,
+            x=output_x,
+            y=output_y,
             config_json={"role": "output", "label": output_label},
             output_slot_label=output_label,
         )
@@ -400,8 +415,8 @@ def _commerce_template(
                 "iteration_image",
                 WorkflowNodeType.IMAGE_GENERATION,
                 title="细化生图",
-                x=1180,
-                y=120,
+                x=iteration_image_x,
+                y=iteration_image_y,
                 instruction_seed="基于上一张输出图继续细化，但保持 DAG 下游连接，不创建回环。",
                 size=size,
             )
@@ -411,8 +426,8 @@ def _commerce_template(
                 "iteration_output",
                 WorkflowNodeType.REFERENCE_IMAGE,
                 title="细化输出",
-                x=1480,
-                y=120,
+                x=iteration_output_x,
+                y=iteration_output_y,
                 config_json={"role": "output", "label": "细化输出"},
                 output_slot_label="细化输出",
             )

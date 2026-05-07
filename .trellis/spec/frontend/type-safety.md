@@ -78,6 +78,85 @@ Form uploads build `FormData` in API methods such as `createProduct(...)`, `addR
 `addImageSessionReferenceImages(...)`. The fetch wrapper omits `Content-Type` for `FormData` so the browser can set the
 multipart boundary.
 
+### Scenario: Create-product API input typing
+
+#### 1. Scope / Trigger
+
+- Trigger: changes to the product creation form, `api.createProduct(...)`, or backend `POST /api/products` multipart
+  fields.
+- Product creation is a cross-layer form-upload contract. Keep the shape centralized in `web/src/lib/types.ts` and have
+  `web/src/lib/api.ts` translate it into `FormData`.
+
+#### 2. Signatures
+
+- Shared frontend DTO: `CreateProductInput`.
+- API method: `api.createProduct(input: CreateProductInput): Promise<ProductDetail>`.
+- Multipart fields currently mirrored from the backend:
+  - `name: string`
+  - `file: File` -> form field `image`
+  - `referenceFiles?: File[]` -> repeated form field `reference_images`
+  - `category?: string`
+  - `price?: string`
+  - `source_note?: string`
+  - `canvas_template_key?: string`
+
+#### 3. Contracts
+
+- Keep backend field names in the DTO for optional form values such as `source_note` and `canvas_template_key`.
+- `canvas_template_key` is the backend-recognized key. UI labels should be merchant-facing output plans, but the submitted
+  value remains the key.
+- Blank/default product-creation plans may submit an empty string or omit `canvas_template_key`; the backend owns default
+  alias handling.
+- Product creation large previews for backend-recognized built-in plans must mirror the backend `full_canvas` template
+  layout for the same key. When changing preview node titles, edges, or coordinates, update the backend template and
+  backend regression tests in the same change.
+- The page component must not duplicate the full mutation object type inline when a shared DTO exists.
+- The API method owns `FormData` construction. Page components should call `api.createProduct(...)` with typed values, not
+  construct raw multipart bodies themselves.
+
+#### 4. Validation & Error Matrix
+
+- Missing `file` is handled by the page before calling the API and should produce the existing `请先上传商品图` message.
+- Invalid/unknown `canvas_template_key` is backend validation and surfaces through `ApiError.detail`.
+- Upload MIME/size errors are backend upload-validation errors and surface through the same `ApiError.detail` path.
+
+#### 5. Good/Base/Bad Cases
+
+- Good: `ProductCreatePage` stores a selected plan key in component state, displays merchant-facing labels, and passes
+  `canvas_template_key` into `api.createProduct`.
+- Base: a blank/basic option can use `""` while still sharing the typed DTO.
+- Bad: `ProductCreatePage` creates `FormData` directly and bypasses the typed API helper.
+- Bad: frontend renames `canvas_template_key` to `canvasTemplateKey` without an explicit mapping layer.
+
+#### 6. Tests Required
+
+- `pnpm --dir web build` must pass after any create-product DTO change.
+- Add focused frontend tests for pure helper logic if plan selection or payload routing becomes non-trivial.
+- Backend API tests remain the source of truth for multipart validation, template-key error status, and persisted template
+  coordinates mirrored by the creation page preview.
+
+#### 7. Wrong vs Correct
+
+Wrong:
+
+```ts
+return api.createProduct({
+  name,
+  file,
+  canvasTemplateKey,
+});
+```
+
+Correct:
+
+```ts
+return api.createProduct({
+  name,
+  file,
+  canvas_template_key: selectedPlanKey,
+});
+```
+
 ---
 
 ## Local Types

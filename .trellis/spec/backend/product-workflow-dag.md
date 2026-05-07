@@ -147,6 +147,116 @@ CanvasTemplate(
 
 Keep the template as node and edge specs so application code can persist visible, editable, runnable workflow objects.
 
+## Scenario: Product creation canvas template selection
+
+### 1. Scope / Trigger
+
+- Trigger: changes to `POST /api/products`, product creation use cases, or creation-time canvas template application.
+- Product creation may initialize a complete ecommerce output plan, but only by materializing a built-in `full_canvas`
+  template into normal persisted workflow rows.
+- Creation-time template selection must not implement canvas-internal node-group insertion, user-saved template storage,
+  result actions, or material lineage. Those are separate product-workbench capabilities.
+
+### 2. Signatures
+
+- API: `POST /api/products` multipart form.
+- Existing required fields remain:
+  - `name: str`
+  - `image: UploadFile`
+- Existing optional fields remain:
+  - `reference_images: list[UploadFile] | None`
+  - `category: str | None`
+  - `price: str | None`
+  - `source_note: str | None`
+- Creation-time template field:
+  - `canvas_template_key: str | None`
+- Application entrypoint:
+  - `create_product(..., canvas_template_key: str | None = None, ...) -> Product`
+- Application helper:
+  - `resolve_product_creation_canvas_template(canvas_template_key: str | None) -> CanvasTemplate | None`
+  - `materialize_product_workflow_from_template(session, *, product_id: str, template: CanvasTemplate) -> ProductWorkflow`
+
+### 3. Contracts
+
+- Missing, blank, and approved default aliases such as `default`, `basic`, `blank`, or `minimal` preserve the existing lazy
+  default workflow behavior. Do not eagerly create a default workflow during product creation for those values.
+- Any other key must resolve through the built-in template catalog. Do not accept frontend-only template payloads or
+  browser-local template definitions for product creation.
+- Only `CanvasTemplate.kind == "full_canvas"` is valid at product creation time.
+- Built-in `node_group` templates are appended to an existing canvas by later palette features, not by `POST /api/products`.
+- `create_product` owns the SQLAlchemy transaction. Template materialization helpers may `flush` rows to resolve ids, but
+  must not `commit` independently.
+- Materialized `WorkflowNode` rows copy template `node_type`, `title`, `position_x`, `position_y`, and `config_json`.
+- Materialized `WorkflowEdge` rows remap template node keys to persisted node ids and copy `source_handle` /
+  `target_handle`.
+- The materialized workflow must be active and must use normal workflow tables. Do not store a hidden selected-template
+  state that later frontend code interprets locally.
+- If the product creation page renders a large preview for a built-in `full_canvas` plan, that preview is a mirror of the
+  backend template. Node titles, relative order, edges, and coordinates for shared template keys must be updated with the
+  backend template and covered by regression tests.
+- Later calls to `get_or_create_product_workflow` must return the active workflow created at product creation and must not
+  overwrite it with the lazy default graph.
+
+### 4. Validation & Error Matrix
+
+- `canvas_template_key` missing/blank/default alias -> create product, no eager workflow row.
+- Unknown non-default key -> `BusinessValidationError("画布模板不存在")` or equivalent template-missing `400`.
+- Built-in key whose template kind is `node_group` -> `BusinessValidationError` with a message explaining product creation
+  supports only complete canvas templates.
+- Product id missing during materialization -> `NotFoundError("商品不存在")`.
+- Product already has an active workflow before materialization -> `BusinessValidationError("商品已有活动画布")`.
+
+### 5. Good/Base/Bad Cases
+
+- Good: creating a product with `ecommerce-main-image-v1` creates one active `ProductWorkflow`, persists all template nodes
+  and edges, and the detail workflow endpoint returns that workflow unchanged.
+- Good: creating a product with no `canvas_template_key` creates only the product/assets; opening the workflow later
+  lazily creates the current default graph.
+- Base: frontend can label the key as a merchant-facing output plan such as `商品主图方案`; the submitted value remains the
+  backend-recognized `canvas_template_key`.
+- Bad: accepting a `node_group` template in product creation and pretending it is a full-canvas starter.
+- Bad: creating a default workflow eagerly for blank/default key and changing current lazy behavior without an explicit
+  product decision.
+- Bad: persisting only `canvas_template_key` on the product and letting the frontend draw non-persisted template nodes.
+
+### 6. Tests Required
+
+- API test default product creation without `canvas_template_key` succeeds and does not eagerly create a workflow.
+- API test explicit default alias preserves the same lazy behavior.
+- API test valid `full_canvas` key creates an active workflow immediately.
+- API test persisted node and edge counts, node types, titles, positions, and config match the selected template.
+- Regression test layout-sensitive built-in templates, including the main-image output and downstream iteration node
+  coordinates that the creation page preview mirrors.
+- API test unknown key returns `400` with template-missing detail.
+- API test built-in `node_group` key returns `400` with complete-canvas-only detail.
+- Regression test fetching the workflow after template-backed creation returns the existing active workflow id.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```python
+product = create_product(...)
+product.canvas_template_key = payload.canvas_template_key
+session.commit()
+```
+
+This stores a hidden selector but does not create editable, runnable workflow rows.
+
+#### Correct
+
+```python
+template = resolve_product_creation_canvas_template(canvas_template_key)
+product = Product(...)
+session.add(product)
+session.flush()
+if template is not None:
+    materialize_product_workflow_from_template(session, product_id=product.id, template=template)
+session.commit()
+```
+
+Creation-time template application must persist the visible workflow graph in the same product creation transaction.
+
 ## Scenario: Product workflow DAG persistence and execution
 
 ### 1. Scope / Trigger

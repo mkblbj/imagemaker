@@ -6,6 +6,7 @@ import type {
   GalleryEntry,
   GalleryEntryListResponse,
   GenerationQueueOverview,
+  CreateProductInput,
   ImageSessionDetail,
   ImageSessionListResponse,
   ImageSessionStatus,
@@ -120,14 +121,7 @@ export const api = {
       body: JSON.stringify(payload),
     });
   },
-  async createProduct(input: {
-    name: string;
-    category?: string;
-    price?: string;
-    source_note?: string;
-    file: File;
-    referenceFiles?: File[];
-  }): Promise<ProductDetail> {
+  async createProduct(input: CreateProductInput): Promise<ProductDetail> {
     const formData = new FormData();
     formData.set("name", input.name);
     formData.set("image", input.file);
@@ -142,6 +136,9 @@ export const api = {
     }
     if (input.source_note) {
       formData.set("source_note", input.source_note);
+    }
+    if (input.canvas_template_key !== undefined) {
+      formData.set("canvas_template_key", input.canvas_template_key);
     }
     return request("/api/products", {
       method: "POST",

@@ -50,6 +50,7 @@ async def create_product_endpoint(
     category: str | None = Form(default=None),
     price: str | None = Form(default=None),
     source_note: str | None = Form(default=None),
+    canvas_template_key: str | None = Form(default=None),
     session: Session = Depends(get_session),
 ) -> ProductDetailResponse:
     main_image = await read_validated_image_upload(image, fallback_filename="upload.bin")
@@ -75,6 +76,7 @@ async def create_product_endpoint(
             filename=main_image.filename,
             content_type=main_image.mime_type,
             reference_image_uploads=reference_payloads,
+            canvas_template_key=canvas_template_key,
         )
     except ValueError as exc:
         raise_value_error_as_http(exc)

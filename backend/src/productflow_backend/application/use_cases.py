@@ -6,6 +6,10 @@ from typing import Any
 from sqlalchemy import desc, exists, func, literal, select
 from sqlalchemy.orm import Session, selectinload
 
+from productflow_backend.application.product_workflow_templates import (
+    materialize_product_workflow_from_template,
+    resolve_product_creation_canvas_template,
+)
 from productflow_backend.application.time import now_utc
 from productflow_backend.domain.durable_generation_tasks import WORKFLOW_RUN_GENERATION_TASK_CONTRACT
 from productflow_backend.domain.enums import (
@@ -121,9 +125,11 @@ def create_product(
     filename: str,
     content_type: str,
     reference_image_uploads: list[tuple[bytes, str, str]] | None = None,
+    canvas_template_key: str | None = None,
     storage: LocalStorage | None = None,
 ) -> Product:
     """创建商品，保存原始图和参考图到本地存储。"""
+    canvas_template = resolve_product_creation_canvas_template(canvas_template_key)
     storage = storage or LocalStorage()
     product = Product(
         name=_normalize_required_text(name, field_name="商品名", max_length=255),
@@ -154,6 +160,12 @@ def create_product(
                 mime_type=reference_content_type or "application/octet-stream",
                 storage_path=reference_path,
             )
+        )
+    if canvas_template is not None:
+        materialize_product_workflow_from_template(
+            session,
+            product_id=product.id,
+            template=canvas_template,
         )
     session.commit()
     session.expire_all()

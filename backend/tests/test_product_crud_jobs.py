@@ -13,6 +13,7 @@ from helpers import (
 )
 from sqlalchemy import event
 
+from productflow_backend.application.canvas_templates import get_builtin_canvas_template
 from productflow_backend.application.use_cases import (
     add_reference_images,
     create_product,
@@ -23,11 +24,15 @@ from productflow_backend.domain.enums import (
     PosterKind,
     ProductWorkflowState,
     SourceAssetKind,
+    WorkflowNodeType,
 )
 from productflow_backend.infrastructure.db.models import (
     CopySet,
     PosterVariant,
+    ProductWorkflow,
     SourceAsset,
+    WorkflowEdge,
+    WorkflowNode,
 )
 
 
@@ -70,6 +75,155 @@ def test_product_create_persists_source_note_for_ai_context(configured_env: Path
     assert minimal_payload["category"] is None
     assert minimal_payload["price"] is None
     assert minimal_payload["source_note"] is None
+
+
+def test_default_product_create_preserves_lazy_workflow_behavior(configured_env: Path, db_session) -> None:
+    from productflow_backend.presentation.api import create_app
+
+    app = create_app()
+    client = TestClient(app)
+    _login(client)
+
+    created = client.post(
+        "/api/products",
+        data={"name": "默认画布商品"},
+        files={"image": ("default.png", _make_demo_image_bytes(), "image/png")},
+    )
+
+    assert created.status_code == 201
+    product_id = created.json()["id"]
+    db_session.expire_all()
+    assert db_session.query(ProductWorkflow).filter_by(product_id=product_id).count() == 0
+
+    workflow_response = client.get(f"/api/products/{product_id}/workflow")
+    assert workflow_response.status_code == 200
+    workflow = workflow_response.json()
+    assert len(workflow["nodes"]) == 4
+    assert len(workflow["edges"]) == 4
+    assert {node["title"] for node in workflow["nodes"]} == {"商品", "文案", "生图", "参考图"}
+
+    default_key = client.post(
+        "/api/products",
+        data={"name": "显式默认画布商品", "canvas_template_key": "default"},
+        files={"image": ("explicit-default.png", _make_demo_image_bytes(), "image/png")},
+    )
+    assert default_key.status_code == 201
+    db_session.expire_all()
+    assert db_session.query(ProductWorkflow).filter_by(product_id=default_key.json()["id"]).count() == 0
+
+
+def test_product_create_materializes_full_canvas_template(configured_env: Path, db_session) -> None:
+    from productflow_backend.presentation.api import create_app
+
+    template = get_builtin_canvas_template("ecommerce-main-image-v1")
+    app = create_app()
+    client = TestClient(app)
+    _login(client)
+
+    created = client.post(
+        "/api/products",
+        data={"name": "模板画布商品", "canvas_template_key": template.key},
+        files={"image": ("template.png", _make_demo_image_bytes(), "image/png")},
+    )
+
+    assert created.status_code == 201
+    product_id = created.json()["id"]
+    db_session.expire_all()
+    workflow = db_session.query(ProductWorkflow).filter_by(product_id=product_id, active=True).one()
+    assert workflow.title == template.title
+
+    nodes = db_session.query(WorkflowNode).filter_by(workflow_id=workflow.id).all()
+    edges = db_session.query(WorkflowEdge).filter_by(workflow_id=workflow.id).all()
+    assert len(nodes) == len(template.nodes)
+    assert len(edges) == len(template.edges)
+
+    persisted_node_ids_by_template_key: dict[str, str] = {}
+    unmatched_nodes = list(nodes)
+    for template_node in template.nodes:
+        matched_node = next(
+            (
+                node
+                for node in unmatched_nodes
+                if node.node_type == template_node.node_type
+                and node.title == template_node.title
+                and node.position_x == template_node.position_x
+                and node.position_y == template_node.position_y
+                and node.config_json == template_node.config_json
+            ),
+            None,
+        )
+        assert matched_node is not None
+        unmatched_nodes.remove(matched_node)
+        persisted_node_ids_by_template_key[template_node.key] = matched_node.id
+
+    assert set(persisted_node_ids_by_template_key) == {node.key for node in template.nodes}
+    persisted_edges = {
+        (edge.source_node_id, edge.target_node_id, edge.source_handle, edge.target_handle) for edge in edges
+    }
+    assert persisted_edges == {
+        (
+            persisted_node_ids_by_template_key[edge.source_node_key],
+            persisted_node_ids_by_template_key[edge.target_node_key],
+            edge.source_handle,
+            edge.target_handle,
+        )
+        for edge in template.edges
+    }
+
+    materialized_nodes_by_key = {
+        template_key: db_session.get(WorkflowNode, node_id)
+        for template_key, node_id in persisted_node_ids_by_template_key.items()
+    }
+    assert {
+        key: (node.node_type, node.position_x, node.position_y)
+        for key, node in materialized_nodes_by_key.items()
+        if node is not None
+    } == {
+        "product": (WorkflowNodeType.PRODUCT_CONTEXT, 48, 120),
+        "copy": (WorkflowNodeType.COPY_GENERATION, 320, 80),
+        "image": (WorkflowNodeType.IMAGE_GENERATION, 640, 112),
+        "output": (WorkflowNodeType.REFERENCE_IMAGE, 960, 66),
+        "iteration_image": (WorkflowNodeType.IMAGE_GENERATION, 1280, 188),
+        "iteration_output": (WorkflowNodeType.REFERENCE_IMAGE, 1600, 188),
+    }
+
+    workflow_response = client.get(f"/api/products/{product_id}/workflow")
+    assert workflow_response.status_code == 200
+    assert workflow_response.json()["id"] == workflow.id
+
+
+def test_product_create_rejects_invalid_canvas_template_key(configured_env: Path) -> None:
+    from productflow_backend.presentation.api import create_app
+
+    app = create_app()
+    client = TestClient(app)
+    _login(client)
+
+    response = client.post(
+        "/api/products",
+        data={"name": "坏模板商品", "canvas_template_key": "missing-template"},
+        files={"image": ("missing.png", _make_demo_image_bytes(), "image/png")},
+    )
+
+    assert response.status_code == 400
+    assert "画布模板不存在" in response.json()["detail"]
+
+
+def test_product_create_rejects_node_group_canvas_template_key(configured_env: Path) -> None:
+    from productflow_backend.presentation.api import create_app
+
+    app = create_app()
+    client = TestClient(app)
+    _login(client)
+
+    response = client.post(
+        "/api/products",
+        data={"name": "节点组模板商品", "canvas_template_key": "ecommerce-sku-variant-image-v1"},
+        files={"image": ("node-group.png", _make_demo_image_bytes(), "image/png")},
+    )
+
+    assert response.status_code == 400
+    assert "只支持完整画布模板" in response.json()["detail"]
 
 
 def test_legacy_jobrun_routes_are_removed(configured_env: Path) -> None:

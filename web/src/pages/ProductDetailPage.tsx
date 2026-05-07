@@ -10,7 +10,6 @@ import {
   Loader2,
   Maximize2,
   Minimize2,
-  OctagonX,
   Play,
   Plus,
   Settings2,
@@ -51,6 +50,7 @@ import { getNodeImageDownload, getSourceImageDownload } from "./product-detail/i
 import type { NodeConfigDraft, SaveStatus } from "./product-detail/types";
 import {
   clamp,
+  getWorkflowNodeCancelableRun,
   getWorkflowNodeRunActionState,
   hasActiveWorkflow,
   isProductWorkflowStatusActive,
@@ -765,7 +765,7 @@ export function ProductDetailPage() {
   const product = productQuery.data;
   const sourceImage = getSourceImageDownload(product);
   const latestRun = workflow?.runs[0] ?? null;
-  const activeCancelableRun = workflow?.runs.find((run) => run.is_cancelable) ?? null;
+  const selectedNodeCancelableRun = getWorkflowNodeCancelableRun(workflow, selectedNode);
   const canvasSize = getCanvasSize({
     minWidth: CANVAS_MIN_WIDTH,
     minHeight: CANVAS_MIN_HEIGHT,
@@ -803,23 +803,6 @@ export function ProductDetailPage() {
         {fullWorkflowRunBusy ? <Loader2 size={15} className="animate-spin" /> : <Play size={15} />}
         <span className="mt-1 leading-none">{fullWorkflowRunBusy ? "运行中" : "运行"}</span>
       </button>
-      {activeCancelableRun ? (
-        <button
-          type="button"
-          onClick={() => handleCancelWorkflowRun(activeCancelableRun)}
-          disabled={cancelWorkflowRunMutation.isPending}
-          className="mt-1 flex w-full flex-col items-center rounded-lg border border-red-500/40 bg-red-500/10 px-1 py-2 text-[10px] font-semibold text-red-200 transition-colors hover:border-red-400 hover:bg-red-500/20 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-          title="取消当前运行"
-          aria-label="取消当前运行"
-        >
-          {cancelWorkflowRunMutation.isPending ? (
-            <Loader2 size={15} className="animate-spin" />
-          ) : (
-            <OctagonX size={15} />
-          )}
-          <span className="mt-1 leading-none">取消</span>
-        </button>
-      ) : null}
       <div className="my-1 h-px w-8 self-center bg-slate-700/80" />
       {ADD_NODE_OPTIONS.map((option) => (
         <button
@@ -1119,10 +1102,16 @@ export function ProductDetailPage() {
                       onPreviewImage={setPreviewImage}
                       onDraftChange={handleDraftChange}
                       onRun={() => void handleRunWorkflow(selectedNode.id)}
+                      onCancelRun={
+                        selectedNodeCancelableRun
+                          ? () => handleCancelWorkflowRun(selectedNodeCancelableRun)
+                          : null
+                      }
                       saveStatus={saveStatus}
                       onUploadImage={(file) => uploadNodeImageMutation.mutate(file)}
                       onDelete={() => handleDeleteNode(selectedNode)}
                       busy={structureBusy}
+                      cancelBusy={cancelWorkflowRunMutation.isPending}
                       runActionState={getWorkflowNodeRunActionState(selectedNode, {
                         runSubmissionPending,
                         pendingStartNodeId,
@@ -1139,7 +1128,6 @@ export function ProductDetailPage() {
                     workflow={workflow}
                     latestRun={latestRun}
                     busyRunId={workflowRunActionBusyRunId ?? null}
-                    onCancelRun={handleCancelWorkflowRun}
                     onRetryRun={handleRetryWorkflowRun}
                   />
                 ) : null}

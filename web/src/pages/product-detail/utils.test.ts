@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ProductWorkflow, WorkflowNode, WorkflowRun, WorkflowRunStatusSummary } from "../../lib/types";
 import {
+  getWorkflowNodeCancelableRun,
   getWorkflowNodeRunActionState,
   hasActiveWorkflow,
   imageWorkflowNodeWaitingLabel,
@@ -185,6 +186,76 @@ describe("product-detail utils", () => {
       pending: false,
       label: "运行",
     });
+  });
+
+  it("finds the cancelable run that currently owns the selected node", () => {
+    const activeRun = workflowRun({
+      id: "run-active",
+      is_cancelable: true,
+      node_runs: [
+        {
+          id: "node-run-active",
+          workflow_run_id: "run-active",
+          node_id: "node-active",
+          status: "running",
+          output_json: null,
+          failure_reason: null,
+          copy_set_id: null,
+          poster_variant_id: null,
+          image_session_asset_id: null,
+          started_at: "2026-04-26T00:01:00Z",
+          finished_at: null,
+        },
+      ],
+    });
+    const unrelatedActiveRun = workflowRun({
+      id: "run-unrelated",
+      is_cancelable: true,
+      node_runs: [
+        {
+          id: "node-run-unrelated",
+          workflow_run_id: "run-unrelated",
+          node_id: "node-other",
+          status: "queued",
+          output_json: null,
+          failure_reason: null,
+          copy_set_id: null,
+          poster_variant_id: null,
+          image_session_asset_id: null,
+          started_at: "2026-04-26T00:01:00Z",
+          finished_at: null,
+        },
+      ],
+    });
+    const finishedRun = workflowRun({
+      id: "run-finished",
+      status: "succeeded",
+      is_cancelable: false,
+      node_runs: [
+        {
+          id: "node-run-finished",
+          workflow_run_id: "run-finished",
+          node_id: "node-active",
+          status: "succeeded",
+          output_json: null,
+          failure_reason: null,
+          copy_set_id: null,
+          poster_variant_id: null,
+          image_session_asset_id: null,
+          started_at: "2026-04-26T00:00:00Z",
+          finished_at: "2026-04-26T00:02:00Z",
+        },
+      ],
+    });
+    const workflow = workflowWith({
+      runs: [finishedRun, unrelatedActiveRun, activeRun],
+    });
+
+    expect(getWorkflowNodeCancelableRun(workflow, { id: "node-active" })?.id).toBe("run-active");
+    expect(getWorkflowNodeCancelableRun(workflow, { id: "node-other" })?.id).toBe("run-unrelated");
+    expect(getWorkflowNodeCancelableRun(workflow, { id: "node-idle" })).toBeNull();
+    expect(getWorkflowNodeCancelableRun(null, { id: "node-active" })).toBeNull();
+    expect(getWorkflowNodeCancelableRun(workflow, null)).toBeNull();
   });
 
   it("labels idle product context nodes as usable static context", () => {

@@ -611,7 +611,7 @@ export function ImageChatPage() {
   const cancelGenerationTaskMutation = useMutation({
     mutationFn: (input: { sessionId: string; taskId: string }) =>
       api.cancelImageSessionGenerationTask(input.sessionId, input.taskId),
-    onSuccess: (updated, input) => {
+    onSuccess: (updated) => {
       queryClient.setQueryData(["image-session", updated.id], updated);
       void queryClient.invalidateQueries({ queryKey: ["image-session-status", updated.id] });
       void queryClient.invalidateQueries({ queryKey: ["image-sessions", productId ?? "standalone"] });

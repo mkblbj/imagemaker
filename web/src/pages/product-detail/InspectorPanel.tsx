@@ -7,6 +7,7 @@ import {
   Image as ImageIcon,
   ImagePlus,
   Loader2,
+  OctagonX,
   Play,
   Trash2,
   Upload,
@@ -55,9 +56,11 @@ interface InspectorPanelProps {
   onDraftChange: (draft: NodeConfigDraft) => void;
   onPreviewImage: (image: DownloadableImage) => void;
   onRun: () => void;
+  onCancelRun: (() => void) | null;
   onUploadImage: (file: File) => void;
   onDelete: () => void;
   busy: boolean;
+  cancelBusy: boolean;
   runActionState: WorkflowNodeRunActionState;
   saveStatus: SaveStatus;
 }
@@ -74,9 +77,11 @@ export function InspectorPanel({
   onDraftChange,
   onPreviewImage,
   onRun,
+  onCancelRun,
   onUploadImage,
   onDelete,
   busy,
+  cancelBusy,
   runActionState,
   saveStatus,
 }: InspectorPanelProps) {
@@ -161,30 +166,54 @@ export function InspectorPanel({
           </div>
         </div>
 
-        {node.node_type !== "product_context" ? (
-          <div className="mt-4 grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={onRun}
-              disabled={runActionState.disabled}
-              className="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
-              title={runActionState.title}
-            >
-              {runActionState.pending ? (
-                <Loader2 size={13} className="mr-1.5 animate-spin" />
-              ) : (
-                <Play size={13} className="mr-1.5" />
-              )}
-              {runActionState.label}
-            </button>
-            <button
-              type="button"
-              onClick={onDelete}
-              disabled={busy}
-              className="inline-flex items-center justify-center rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
-            >
-              <Trash2 size={13} className="mr-1.5" /> 删除
-            </button>
+        {node.node_type !== "product_context" || onCancelRun ? (
+          <div
+            className={`mt-4 grid gap-2 ${
+              node.node_type === "product_context" ? "grid-cols-1" : onCancelRun ? "grid-cols-3" : "grid-cols-2"
+            }`}
+          >
+            {node.node_type !== "product_context" ? (
+              <button
+                type="button"
+                onClick={onRun}
+                disabled={runActionState.disabled}
+                className="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
+                title={runActionState.title}
+              >
+                {runActionState.pending ? (
+                  <Loader2 size={13} className="mr-1.5 animate-spin" />
+                ) : (
+                  <Play size={13} className="mr-1.5" />
+                )}
+                {runActionState.label}
+              </button>
+            ) : null}
+            {onCancelRun ? (
+              <button
+                type="button"
+                onClick={onCancelRun}
+                disabled={cancelBusy}
+                className="inline-flex items-center justify-center rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-100 disabled:opacity-50"
+                title="取消包含该节点的当前运行"
+              >
+                {cancelBusy ? (
+                  <Loader2 size={13} className="mr-1.5 animate-spin" />
+                ) : (
+                  <OctagonX size={13} className="mr-1.5" />
+                )}
+                取消
+              </button>
+            ) : null}
+            {node.node_type !== "product_context" ? (
+              <button
+                type="button"
+                onClick={onDelete}
+                disabled={busy}
+                className="inline-flex items-center justify-center rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+              >
+                <Trash2 size={13} className="mr-1.5" /> 删除
+              </button>
+            ) : null}
           </div>
         ) : null}
       </section>

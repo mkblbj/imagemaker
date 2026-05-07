@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FileText, Loader2, OctagonX, RotateCcw, Layers3 } from "lucide-react";
+import { FileText, Loader2, RotateCcw, Layers3 } from "lucide-react";
 
 import { PromptPreviewDialog, type PromptPreview } from "../../components/PromptPreviewDialog";
 import { formatDateTime } from "../../lib/format";
@@ -31,7 +31,6 @@ interface RunsPanelProps {
   workflow: ProductWorkflow | null;
   latestRun: ProductWorkflow["runs"][number] | null;
   busyRunId: string | null;
-  onCancelRun: (run: WorkflowRun) => void;
   onRetryRun: (run: WorkflowRun) => void;
 }
 
@@ -68,7 +67,7 @@ function imagePromptItems(
   });
 }
 
-export function RunsPanel({ workflow, latestRun, busyRunId, onCancelRun, onRetryRun }: RunsPanelProps) {
+export function RunsPanel({ workflow, latestRun, busyRunId, onRetryRun }: RunsPanelProps) {
   const [promptPreview, setPromptPreview] = useState<PromptPreview | null>(null);
 
   return (
@@ -151,38 +150,21 @@ export function RunsPanel({ workflow, latestRun, busyRunId, onCancelRun, onRetry
                       <div>{formatDateTime(run.started_at)}</div>
                       {run.finished_at ? <div>完成 {formatDateTime(run.finished_at)}</div> : null}
                     </div>
-                    {run.is_cancelable || run.is_retryable ? (
+                    {run.is_retryable ? (
                       <div className="flex items-center gap-1.5">
-                        {run.is_retryable ? (
-                          <button
-                            type="button"
-                            onClick={() => onRetryRun(run)}
-                            disabled={runBusy}
-                            className="inline-flex items-center rounded-lg border border-zinc-200 bg-white px-2 py-1 text-[11px] font-medium text-zinc-600 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-700 disabled:opacity-60"
-                          >
-                            {runBusy ? (
-                              <Loader2 size={12} className="mr-1 animate-spin" />
-                            ) : (
-                              <RotateCcw size={12} className="mr-1" />
-                            )}
-                            重试
-                          </button>
-                        ) : null}
-                        {run.is_cancelable ? (
-                          <button
-                            type="button"
-                            onClick={() => onCancelRun(run)}
-                            disabled={runBusy}
-                            className="inline-flex items-center rounded-lg border border-zinc-200 bg-white px-2 py-1 text-[11px] font-medium text-red-600 transition-colors hover:border-red-200 hover:bg-red-50 disabled:opacity-60"
-                          >
-                            {runBusy ? (
-                              <Loader2 size={12} className="mr-1 animate-spin" />
-                            ) : (
-                              <OctagonX size={12} className="mr-1" />
-                            )}
-                            取消
-                          </button>
-                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => onRetryRun(run)}
+                          disabled={runBusy}
+                          className="inline-flex items-center rounded-lg border border-zinc-200 bg-white px-2 py-1 text-[11px] font-medium text-zinc-600 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-700 disabled:opacity-60"
+                        >
+                          {runBusy ? (
+                            <Loader2 size={12} className="mr-1 animate-spin" />
+                          ) : (
+                            <RotateCcw size={12} className="mr-1" />
+                          )}
+                          重试
+                        </button>
                       </div>
                     ) : null}
                   </div>

@@ -58,8 +58,9 @@
   edges and run history cleanup are backend responsibilities.
 - Workflow execution is asynchronous from the frontend perspective: `runProductWorkflow(productId, input?)` returns the
   persisted kickoff state, then the page polls `['product-workflow', productId]` while any run is `running` or any node is
-  `queued` / `running`. Run history must use backend `is_cancelable` / `is_retryable` fields for cancel/retry actions;
-  cancel buttons call the workflow cancel API and must not be local-only state.
+  `queued` / `running`. Run history must use backend `is_retryable` for retry actions. Cancellation belongs in the
+  selected node detail actions when the selected node is part of a cancelable active run; cancel buttons call the workflow
+  cancel API and must not be local-only state.
 - Running any workflow node must first flush the currently selected dirty inspector draft, even when the clicked run action
   belongs to a different node. Otherwise a user can edit the product context node and immediately run an image node from
   the canvas before autosave persists the newest product fields.

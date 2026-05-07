@@ -127,6 +127,26 @@ export function getWorkflowNodeRunActionState(
   };
 }
 
+export function getWorkflowNodeCancelableRun(
+  workflow: ProductWorkflow | undefined | null,
+  node: Pick<WorkflowNode, "id"> | undefined | null,
+): WorkflowRun | null {
+  if (!workflow || !node) {
+    return null;
+  }
+  return (
+    workflow.runs.find(
+      (run) =>
+        run.is_cancelable &&
+        run.node_runs.some(
+          (nodeRun) =>
+            nodeRun.node_id === node.id &&
+            (nodeRun.status === "queued" || nodeRun.status === "running"),
+        ),
+    ) ?? null
+  );
+}
+
 export function hasActiveWorkflow(workflow: ProductWorkflow | undefined | null): boolean {
   if (!workflow) {
     return false;

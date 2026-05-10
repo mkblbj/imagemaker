@@ -82,7 +82,7 @@ export function ProductListPage() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-50 dark:bg-slate-950">
+    <div className="flex min-h-screen flex-col bg-slate-50 dark:bg-[#060a12]">
       <TopNav
         onHome={() => navigate("/products")}
         onLogout={() => logoutMutation.mutate()}
@@ -90,21 +90,21 @@ export function ProductListPage() {
 
       <main className="mx-auto flex w-full max-w-6xl flex-1 px-6 py-8 lg:py-10">
         <div className="w-full space-y-6">
-          <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm shadow-slate-200/60">
+          <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm shadow-slate-200/60 dark:border-slate-700/80 dark:bg-[#0f1726] dark:shadow-[0_20px_70px_rgba(0,0,0,0.28)]">
             <div className="grid gap-8 p-6 md:grid-cols-[1.35fr_1fr] lg:p-7">
               <div>
-                <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-400">
+                <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-400 dark:text-slate-500">
                   {t("products.heroEyebrow")}
                 </div>
-                <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">{t("products.title")}</h1>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+                <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-white">{t("products.title")}</h1>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400">
                   {t("products.description")}
                 </p>
                 <div className="mt-5 flex flex-wrap items-center gap-3">
                   <button
                     type="button"
                     onClick={() => navigate("/products/new")}
-                    className="inline-flex items-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-indigo-600/20 transition-colors hover:bg-indigo-500"
+                    className="inline-flex items-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-indigo-600/20 transition-colors hover:bg-indigo-500 dark:bg-gradient-to-r dark:from-indigo-500 dark:to-violet-500 dark:shadow-violet-900/35 dark:ring-1 dark:ring-violet-300/35"
                   >
                     <Plus size={16} className="mr-1.5" /> {t("products.new")}
                   </button>
@@ -118,10 +118,10 @@ export function ProductListPage() {
             </div>
           </section>
 
-          <div className="flex items-end justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm shadow-slate-200/50">
+          <div className="flex items-end justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm shadow-slate-200/50 dark:border-slate-700/80 dark:bg-[#0f1726] dark:shadow-[0_16px_48px_rgba(0,0,0,0.22)]">
             <div>
-              <h2 className="text-base font-semibold text-zinc-900">{t("products.listTitle")}</h2>
-              <p className="mt-1 text-sm text-zinc-500">
+              <h2 className="text-base font-semibold text-zinc-900 dark:text-white">{t("products.listTitle")}</h2>
+              <p className="mt-1 text-sm text-zinc-500 dark:text-slate-400">
                 {t("products.paginationSummary", { page, totalPages, total })}
               </p>
             </div>
@@ -135,7 +135,7 @@ export function ProductListPage() {
           ) : null}
 
           {productsQuery.isLoading ? (
-            <div className="flex justify-center rounded-xl border border-zinc-200 bg-white py-20 text-zinc-400">
+            <div className="flex justify-center rounded-xl border border-zinc-200 bg-white py-20 text-zinc-400 dark:border-slate-700/80 dark:bg-[#111b2d] dark:text-slate-500">
               <Loader2 size={20} className="animate-spin" />
             </div>
           ) : productsQuery.isError ? (
@@ -143,20 +143,20 @@ export function ProductListPage() {
               {t("products.loadFailed")}
             </div>
           ) : products.length ? (
-            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm shadow-slate-200/50">
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm shadow-slate-200/50 dark:border-slate-700/80 dark:bg-[#0f1726] dark:shadow-[0_18px_60px_rgba(0,0,0,0.24)]">
               <table className="w-full table-fixed border-collapse text-left text-sm">
                 <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50/70">
-                    <th className="w-[45%] px-5 py-3 font-medium text-zinc-500">{t("products.table.product")}</th>
-                    <th className="w-[18%] px-5 py-3 font-medium text-zinc-500">{t("products.table.state")}</th>
-                    <th className="w-[18%] px-5 py-3 font-medium text-zinc-500">{t("products.table.updated")}</th>
-                    <th className="w-[19%] px-5 py-3 text-right font-medium text-zinc-500">{t("products.table.actions")}</th>
+                  <tr className="border-b border-slate-200 bg-slate-50/70 dark:border-slate-700/80 dark:bg-[#151f33]">
+                    <th className="w-[45%] px-5 py-3 font-medium text-zinc-500 dark:text-slate-300">{t("products.table.product")}</th>
+                    <th className="w-[18%] px-5 py-3 font-medium text-zinc-500 dark:text-slate-300">{t("products.table.state")}</th>
+                    <th className="w-[18%] px-5 py-3 font-medium text-zinc-500 dark:text-slate-300">{t("products.table.updated")}</th>
+                    <th className="w-[19%] px-5 py-3 text-right font-medium text-zinc-500 dark:text-slate-300">{t("products.table.actions")}</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-zinc-100">
+                <tbody className="divide-y divide-zinc-100 dark:divide-slate-800">
                   {products.map((product) => {
                     return (
-                      <tr key={product.id} className="group transition-colors hover:bg-indigo-50/30">
+                      <tr key={product.id} className="group transition-colors hover:bg-indigo-50/30 dark:hover:bg-violet-500/10">
                         <td className="px-5 py-4">
                           <div className="flex min-w-0 items-center gap-3">
                             <ProductThumbnail product={product} />
@@ -164,12 +164,12 @@ export function ProductListPage() {
                               <button
                                 type="button"
                                 onClick={() => navigate(`/products/${product.id}`)}
-                                className="block max-w-full truncate text-left font-medium text-slate-950 transition-colors hover:text-indigo-700"
+                                className="block max-w-full truncate text-left font-medium text-slate-950 transition-colors hover:text-indigo-700 dark:text-slate-100 dark:hover:text-violet-200"
                                 title={product.name}
                               >
                                 {product.name}
                               </button>
-                              <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-zinc-500">
+                              <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-zinc-500 dark:text-slate-400">
                                 {product.category ? (
                                   <span className="min-w-0 max-w-full truncate">{product.category}</span>
                                 ) : null}
@@ -186,7 +186,7 @@ export function ProductListPage() {
                         <td className="px-5 py-4">
                           <StatusPill status={product.workflow_state} />
                         </td>
-                        <td className="px-5 py-4 font-mono text-xs text-zinc-500">
+                        <td className="px-5 py-4 font-mono text-xs text-zinc-500 dark:text-slate-400">
                           {formatShortDate(product.updated_at)}
                         </td>
                         <td className="px-5 py-4 text-right">
@@ -203,7 +203,7 @@ export function ProductListPage() {
                             <button
                               type="button"
                               onClick={() => navigate(`/products/${product.id}`)}
-                              className="inline-flex items-center text-sm font-medium text-zinc-600 transition-colors hover:text-zinc-900"
+                              className="inline-flex items-center text-sm font-medium text-zinc-600 transition-colors hover:text-zinc-900 dark:text-slate-300 dark:hover:text-white"
                             >
                               {t("products.open")} <ArrowRight size={14} className="ml-1" />
                             </button>
@@ -216,14 +216,14 @@ export function ProductListPage() {
               </table>
             </div>
           ) : (
-            <div className="rounded-xl border border-dashed border-zinc-300 bg-white px-6 py-16 text-center">
-              <ImageIcon className="mx-auto mb-3 text-zinc-300" size={32} />
-              <div className="font-medium text-zinc-900">{t("products.emptyTitle")}</div>
-              <p className="mt-1 text-sm text-zinc-500">{t("products.emptyDescription")}</p>
+            <div className="rounded-xl border border-dashed border-zinc-300 bg-white px-6 py-16 text-center dark:border-slate-700/80 dark:bg-[#0f1726]">
+              <ImageIcon className="mx-auto mb-3 text-zinc-300 dark:text-slate-500" size={32} />
+              <div className="font-medium text-zinc-900 dark:text-white">{t("products.emptyTitle")}</div>
+              <p className="mt-1 text-sm text-zinc-500 dark:text-slate-400">{t("products.emptyDescription")}</p>
               <button
                 type="button"
                 onClick={() => navigate("/products/new")}
-                className="mt-5 inline-flex items-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-indigo-600/20 hover:bg-indigo-500"
+                className="mt-5 inline-flex items-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-indigo-600/20 hover:bg-indigo-500 dark:bg-gradient-to-r dark:from-indigo-500 dark:to-violet-500 dark:shadow-violet-900/35"
               >
                 <Plus size={16} className="mr-1.5" /> {t("products.new")}
               </button>
@@ -243,9 +243,9 @@ export function ProductListPage() {
 
 function MetricCard({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-      <div className="text-2xl font-semibold tracking-tight text-slate-950">{value}</div>
-      <div className="mt-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">{label}</div>
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700/80 dark:bg-[#151f33]">
+      <div className="text-2xl font-semibold tracking-tight text-slate-950 dark:text-white">{value}</div>
+      <div className="mt-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">{label}</div>
     </div>
   );
 }
@@ -256,7 +256,7 @@ function ProductThumbnail({ product }: { product: ProductSummary }) {
   const shouldShowImage = Boolean(thumbUrl) && !failed;
 
   return (
-    <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-100 text-slate-400 shadow-sm">
+    <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-100 text-slate-400 shadow-sm dark:border-slate-700 dark:bg-[#0b1220] dark:text-slate-500">
       {shouldShowImage && thumbUrl ? (
         <img
           src={api.toApiUrl(thumbUrl)}
@@ -285,23 +285,23 @@ function Pagination({
 }) {
   const { t } = useI18n();
   return (
-    <div className="inline-flex items-center gap-2 rounded-lg border border-zinc-200 bg-white p-1 shadow-sm">
+    <div className="inline-flex items-center gap-2 rounded-lg border border-zinc-200 bg-white p-1 shadow-sm dark:border-slate-700/80 dark:bg-[#151f33] dark:shadow-black/20">
       <button
         type="button"
         onClick={() => onPageChange(Math.max(1, page - 1))}
         disabled={disabled || page <= 1}
-        className="inline-flex items-center rounded-md px-2.5 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-50 disabled:opacity-40"
+        className="inline-flex items-center rounded-md px-2.5 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-50 disabled:opacity-40 dark:text-slate-300 dark:hover:bg-violet-500/15 dark:hover:text-white"
       >
         <ArrowLeft size={13} className="mr-1" /> {t("pagination.previous")}
       </button>
-      <span className="px-2 text-xs tabular-nums text-zinc-500">
+      <span className="px-2 text-xs tabular-nums text-zinc-500 dark:text-slate-400">
         {page} / {totalPages}
       </span>
       <button
         type="button"
         onClick={() => onPageChange(Math.min(totalPages, page + 1))}
         disabled={disabled || page >= totalPages}
-        className="inline-flex items-center rounded-md px-2.5 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-50 disabled:opacity-40"
+        className="inline-flex items-center rounded-md px-2.5 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-50 disabled:opacity-40 dark:text-slate-300 dark:hover:bg-violet-500/15 dark:hover:text-white"
       >
         {t("pagination.next")} <ArrowRight size={13} className="ml-1" />
       </button>

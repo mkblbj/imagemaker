@@ -27,7 +27,7 @@ export function ImageGenerationSettingsTabs({
 
   return (
     <div className={className}>
-      <div className="mb-4 grid grid-cols-2 gap-1 rounded-xl border border-slate-200 bg-slate-100 p-1 dark:border-slate-700 dark:bg-slate-950/70">
+      <div className="mb-4 grid grid-cols-2 gap-1 rounded-xl border border-slate-200 bg-slate-100 p-1 dark:border-slate-700 dark:bg-slate-950/72 dark:shadow-inner dark:shadow-black/20">
         {tabs.map(([tab, label]) => (
           <button
             key={tab}
@@ -35,8 +35,8 @@ export function ImageGenerationSettingsTabs({
             onClick={() => onChange(tab)}
             className={`h-9 rounded-lg border text-sm font-semibold transition-colors ${
               value === tab
-                ? "border-indigo-200 bg-white text-indigo-700 shadow-sm dark:border-indigo-400/60 dark:bg-indigo-500/20 dark:text-indigo-100 dark:ring-1 dark:ring-indigo-400/25"
-                : "border-transparent text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
+                ? "border-indigo-200 bg-white text-indigo-700 shadow-sm dark:border-violet-400/70 dark:bg-violet-500/18 dark:text-white dark:shadow-violet-950/25 dark:ring-1 dark:ring-violet-300/35"
+                : "border-transparent text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-900/70 dark:hover:text-slate-100"
             }`}
           >
             {label}

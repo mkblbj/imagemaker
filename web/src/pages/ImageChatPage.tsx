@@ -179,18 +179,18 @@ function placeholderStatusLabel(candidate: ImageHistoryPlaceholderCandidate, t: 
 
 function placeholderStatusClass(candidate: ImageHistoryPlaceholderCandidate) {
   if (candidate.status === "failed") {
-    return "border-red-200 bg-red-50 text-red-700";
+    return "border-red-200 bg-red-50 text-red-700 dark:border-red-400/40 dark:bg-red-500/15 dark:text-red-100";
   }
   if (candidate.status === "queued") {
-    return "border-amber-200 bg-amber-50 text-amber-700";
+    return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-300/40 dark:bg-amber-500/15 dark:text-amber-100";
   }
   if (candidate.status === "completed") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-300/40 dark:bg-emerald-500/15 dark:text-emerald-100";
   }
   if (candidate.status === "cancelled") {
-    return "border-slate-200 bg-slate-50 text-slate-600";
+    return "border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-600 dark:bg-slate-800/80 dark:text-slate-200";
   }
-  return "border-indigo-200 bg-indigo-50 text-indigo-700";
+  return "border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-violet-400/50 dark:bg-violet-500/15 dark:text-violet-100";
 }
 
 export function ImageChatPage() {
@@ -876,7 +876,7 @@ export function ImageChatPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-100 text-slate-900 dark:bg-slate-950 lg:h-screen lg:overflow-hidden">
+    <div className="flex min-h-screen flex-col bg-slate-100 text-slate-900 dark:bg-[#060a12] dark:text-slate-100 lg:h-screen lg:overflow-hidden">
       <TopNav
         breadcrumbs={isProductMode ? `${productQuery.data?.name ?? t("chat.productFallback")} / ${t("chat.breadcrumb")}` : t("chat.breadcrumb")}
         onHome={() => navigate(isProductMode && productId ? `/products/${productId}` : "/products")}
@@ -885,7 +885,7 @@ export function ImageChatPage() {
 
       <main className="flex flex-1 flex-col pb-28 lg:min-h-0 lg:flex-row lg:overflow-hidden lg:pb-0">
         <aside
-          className="relative flex w-full shrink-0 flex-col border-b border-slate-200 bg-white/95 lg:w-[var(--image-chat-left-panel-width)] lg:border-b-0 lg:border-r"
+          className="relative flex w-full shrink-0 flex-col border-b border-slate-200 bg-white/95 dark:border-slate-700/80 dark:bg-[#0f1726] dark:shadow-[12px_0_36px_rgba(0,0,0,0.24)] dark:backdrop-blur-xl lg:w-[var(--image-chat-left-panel-width)] lg:border-b-0 lg:border-r"
           style={leftPanelStyle}
         >
           <button
@@ -893,21 +893,21 @@ export function ImageChatPage() {
             aria-label={t("chat.resizeSessions")}
             title={t("chat.resizeSessionsTitle")}
             onPointerDown={(event) => handlePanelResizeStart("left", event)}
-            className="absolute right-[-5px] top-0 z-20 hidden h-full w-3 cursor-col-resize items-center justify-center transition-colors hover:bg-indigo-50/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 lg:flex"
+            className="absolute right-[-5px] top-0 z-20 hidden h-full w-3 cursor-col-resize items-center justify-center transition-colors hover:bg-indigo-50/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:hover:bg-violet-500/15 lg:flex"
           >
-            <span className="h-12 w-1 rounded-full bg-slate-300" />
+            <span className="h-12 w-1 rounded-full bg-slate-300 dark:bg-slate-600" />
           </button>
-          <div className="border-b border-slate-200 px-4 py-4">
+          <div className="border-b border-slate-200 px-4 py-4 dark:border-slate-800">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <div className="text-sm font-semibold text-slate-950">{t("chat.sessions")}</div>
-                <div className="mt-1 text-xs text-slate-500">{t("chat.count", { count: sessionItems.length })}</div>
+                <div className="text-sm font-semibold text-slate-950 dark:text-white">{t("chat.sessions")}</div>
+                <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{t("chat.count", { count: sessionItems.length })}</div>
               </div>
               <button
                 type="button"
                 onClick={() => createSessionMutation.mutate()}
                 disabled={createSessionMutation.isPending}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm shadow-indigo-500/20 transition-colors hover:bg-indigo-500 disabled:opacity-60"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm shadow-indigo-500/20 transition-colors hover:bg-indigo-500 disabled:opacity-60 dark:bg-gradient-to-br dark:from-indigo-500 dark:to-violet-500 dark:shadow-violet-900/35 dark:ring-1 dark:ring-violet-300/30"
                 aria-label={t("chat.newSession")}
               >
                 {createSessionMutation.isPending ? <Loader2 size={15} className="animate-spin" /> : <Plus size={16} />}
@@ -929,8 +929,8 @@ export function ImageChatPage() {
                     key={item.id}
                     className={`group relative w-64 shrink-0 overflow-hidden rounded-2xl border transition-all lg:w-auto ${
                       active
-                        ? "border-indigo-300 bg-indigo-50 shadow-sm shadow-indigo-100 ring-1 ring-indigo-200/80"
-                        : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+                        ? "border-indigo-300 bg-indigo-50 shadow-sm shadow-indigo-100 ring-1 ring-indigo-200/80 dark:border-violet-500/80 dark:bg-violet-500/14 dark:shadow-violet-950/30 dark:ring-violet-400/45"
+                        : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700/75 dark:bg-[#151f33] dark:hover:border-violet-500/45 dark:hover:bg-[#1a2740]"
                     }`}
                   >
                     <button
@@ -938,7 +938,7 @@ export function ImageChatPage() {
                       onClick={() => handleSelectSession(item.id)}
                       className="flex w-full items-center gap-3 p-2.5 pr-10 text-left"
                     >
-                      <div className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-100 text-slate-400 ring-1 ring-slate-200">
+                      <div className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-100 text-slate-400 ring-1 ring-slate-200 dark:bg-[#0a1020] dark:text-slate-400 dark:ring-slate-600/80">
                         {item.latest_generated_asset ? (
                           <img
                             src={api.toApiUrl(item.latest_generated_asset.thumbnail_url)}
@@ -950,17 +950,17 @@ export function ImageChatPage() {
                         ) : (
                           <MessagesSquare size={18} />
                         )}
-                        {active ? <div className="absolute inset-0 ring-2 ring-inset ring-indigo-500/60" /> : null}
+                        {active ? <div className="absolute inset-0 ring-2 ring-inset ring-indigo-500/60 dark:ring-violet-400/80" /> : null}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <div className={`truncate text-sm font-semibold ${active ? "text-indigo-950" : "text-slate-900"}`}>
+                        <div className={`truncate text-sm font-semibold ${active ? "text-indigo-950 dark:text-white" : "text-slate-900 dark:text-slate-100"}`}>
                           {item.title}
                         </div>
-                        <div className="mt-1 flex items-center gap-1.5 text-[11px] text-slate-500">
+                        <div className="mt-1 flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-300">
                           <History size={11} />
                           <span>{t("chat.roundCount", { count: item.rounds_count })}</span>
                         </div>
-                        <div className="mt-0.5 truncate text-[11px] text-slate-400">{formatDateTime(item.updated_at)}</div>
+                        <div className="mt-0.5 truncate text-[11px] text-slate-400 dark:text-slate-500">{formatDateTime(item.updated_at)}</div>
                       </div>
                     </button>
                     <button
@@ -969,7 +969,7 @@ export function ImageChatPage() {
                       onClick={() => handleDeleteSession(item.id)}
                       disabled={deleting || !deletionEnabled}
                       title={deletionEnabled ? t("chat.deleteSession") : t("chat.deleteDisabled")}
-                      className="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-lg bg-white/95 text-slate-400 opacity-100 shadow-sm ring-1 ring-slate-200 transition-colors hover:text-red-600 disabled:opacity-60 md:opacity-0 md:group-hover:opacity-100"
+                      className="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-lg bg-white/95 text-slate-400 opacity-100 shadow-sm ring-1 ring-slate-200 transition-colors hover:text-red-600 disabled:opacity-60 dark:bg-slate-950/88 dark:text-slate-400 dark:ring-slate-700 dark:hover:text-red-300 md:opacity-0 md:group-hover:opacity-100"
                     >
                       {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
                     </button>
@@ -977,36 +977,36 @@ export function ImageChatPage() {
                 );
               })
             ) : (
-              <div className="rounded-2xl border border-dashed border-slate-200 p-5 text-center text-sm text-slate-500">
+              <div className="rounded-2xl border border-dashed border-slate-200 p-5 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
                 {t("chat.noSessions")}
               </div>
             )}
           </div>
         </aside>
 
-        <section className="flex min-w-0 flex-col bg-slate-100 lg:min-h-0 lg:flex-1 lg:overflow-hidden">
+        <section className="flex min-w-0 flex-col bg-slate-100 dark:bg-[#0b1220] lg:min-h-0 lg:flex-1 lg:overflow-hidden">
           <div className="flex flex-col p-3 pb-2 lg:min-h-0 lg:flex-1">
             <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
-                <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
-                  <span className="inline-flex h-7 items-center rounded-full bg-white px-3 shadow-sm ring-1 ring-slate-200">
+                <div className="flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-300">
+                  <span className="inline-flex h-7 items-center rounded-full bg-white px-3 shadow-sm ring-1 ring-slate-200 dark:border dark:border-violet-400/30 dark:bg-slate-950/70 dark:text-violet-100 dark:ring-violet-400/20">
                     {t("chat.currentResult")}
                   </span>
                   {branchBaseRound ? (
-                    <span className="inline-flex h-7 items-center gap-1 rounded-full bg-indigo-600 px-3 text-white shadow-sm shadow-indigo-500/20">
+                    <span className="inline-flex h-7 items-center gap-1 rounded-full bg-indigo-600 px-3 text-white shadow-sm shadow-indigo-500/20 dark:bg-violet-500/20 dark:text-violet-100 dark:ring-1 dark:ring-violet-400/40">
                       <Layers3 size={12} /> {t("chat.baseSelected")}
                     </span>
                   ) : null}
                 </div>
-                <h1 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">
+                <h1 className="mt-2 text-xl font-semibold tracking-tight text-slate-950 dark:text-white">
                   {imageSession?.title ?? t("chat.workbench")}
                 </h1>
                 {selectedRound ? (
-                  <div className="mt-1 text-xs font-medium text-slate-500 md:hidden">
+                  <div className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400 md:hidden">
                     {imageRoundSizeLabel(selectedRound, t)} · {t("chat.candidate", { index: selectedRound.candidate_index, count: selectedRound.candidate_count })}
                   </div>
                 ) : selectedPlaceholder ? (
-                  <div className="mt-1 text-xs font-medium text-slate-500 md:hidden">
+                  <div className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400 md:hidden">
                     {placeholderStatusLabel(selectedPlaceholder, t)} · {t("chat.candidate", { index: selectedPlaceholder.candidate_index, count: selectedPlaceholder.candidate_count })}
                   </div>
                 ) : null}
@@ -1014,7 +1014,7 @@ export function ImageChatPage() {
               <div className="flex w-full flex-wrap items-center justify-start gap-2 sm:w-auto sm:justify-end">
                 {selectedRound ? (
                   <>
-                    <span className="hidden rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-600 shadow-sm md:inline-flex">
+                    <span className="hidden rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-600 shadow-sm dark:border-slate-700 dark:bg-slate-950/80 dark:text-slate-200 md:inline-flex">
                       {imageRoundSizeLabel(selectedRound, t)} · {t("chat.candidate", { index: selectedRound.candidate_index, count: selectedRound.candidate_count })}
                     </span>
                     <a
@@ -1023,7 +1023,7 @@ export function ImageChatPage() {
                       rel="noreferrer"
                       title={t("chat.downloadCurrent")}
                       aria-label={t("chat.downloadCurrent")}
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition-colors hover:border-indigo-200 hover:text-indigo-700"
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition-colors hover:border-indigo-200 hover:text-indigo-700 dark:border-slate-700 dark:bg-slate-950/80 dark:text-slate-200 dark:hover:border-violet-400/60 dark:hover:text-violet-100"
                     >
                       <Download size={15} />
                     </a>
@@ -1033,7 +1033,7 @@ export function ImageChatPage() {
                       disabled={saveGalleryMutation.isPending}
                       title={t("chat.saveSelectedGallery")}
                       aria-label={t("chat.saveSelectedGallery")}
-                      className="inline-flex h-10 shrink-0 items-center justify-center rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white shadow-sm shadow-indigo-500/20 ring-1 ring-indigo-500 transition-colors hover:bg-indigo-700 disabled:opacity-60"
+                      className="inline-flex h-10 shrink-0 items-center justify-center rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white shadow-sm shadow-indigo-500/20 ring-1 ring-indigo-500 transition-colors hover:bg-indigo-700 disabled:opacity-60 dark:bg-gradient-to-r dark:from-indigo-500 dark:to-violet-500 dark:shadow-violet-900/35 dark:ring-violet-300/35"
                     >
                       {saveGalleryMutation.isPending ? (
                         <Loader2 size={16} className="mr-2 animate-spin" />
@@ -1051,24 +1051,24 @@ export function ImageChatPage() {
               </div>
             </div>
 
-            <div className="relative flex min-h-[320px] flex-1 items-center justify-center overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm max-h-[72vh] lg:min-h-[360px] lg:max-h-none">
-              <div className="absolute inset-0 bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] [background-size:20px_20px] dark:bg-[radial-gradient(rgba(148,163,184,0.42)_1px,transparent_1px)]" />
+            <div className="relative flex min-h-[320px] flex-1 items-center justify-center overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm max-h-[72vh] dark:border-slate-600/80 dark:bg-[#121b2d] dark:shadow-[0_0_0_1px_rgba(139,92,246,0.10),0_24px_80px_rgba(0,0,0,0.35)] lg:min-h-[360px] lg:max-h-none">
+              <div className="absolute inset-0 bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] [background-size:20px_20px] dark:bg-[radial-gradient(rgba(148,163,184,0.26)_1px,transparent_1px)]" />
               <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between gap-3 px-5 py-4">
                 {selectedRound ? (
-                  <div className="min-w-0 max-w-[calc(100%-5.5rem)] truncate rounded-full bg-white/90 px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm ring-1 ring-slate-200 backdrop-blur">
+                  <div className="min-w-0 max-w-[calc(100%-5.5rem)] truncate rounded-full bg-white/90 px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm ring-1 ring-slate-200 backdrop-blur dark:bg-slate-950/82 dark:text-slate-200 dark:ring-slate-700">
                     {formatDateTime(selectedRound.created_at)} · {selectedRound.model_name}
                   </div>
                 ) : selectedPlaceholder ? (
-                  <div className="min-w-0 max-w-[calc(100%-5.5rem)] truncate rounded-full bg-white/90 px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm ring-1 ring-slate-200 backdrop-blur">
+                  <div className="min-w-0 max-w-[calc(100%-5.5rem)] truncate rounded-full bg-white/90 px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm ring-1 ring-slate-200 backdrop-blur dark:bg-slate-950/82 dark:text-slate-200 dark:ring-slate-700">
                     {placeholderStatusLabel(selectedPlaceholder, t)} · {formatImageSizeValue(selectedPlaceholder.size)}
                   </div>
                 ) : (
-                  <div className="rounded-full bg-white/90 px-3 py-1.5 text-xs font-medium text-slate-500 shadow-sm ring-1 ring-slate-200 backdrop-blur">
+                  <div className="rounded-full bg-white/90 px-3 py-1.5 text-xs font-medium text-slate-500 shadow-sm ring-1 ring-slate-200 backdrop-blur dark:border dark:border-violet-400/35 dark:bg-slate-950/82 dark:text-violet-100 dark:ring-violet-400/20">
                     {t("chat.waitingFirstResult")}
                   </div>
                 )}
                 {branchBaseRound ? (
-                  <div className="inline-flex h-8 items-center gap-1.5 rounded-full bg-indigo-600 px-3 text-xs font-semibold text-white shadow-sm shadow-indigo-500/20">
+                  <div className="inline-flex h-8 items-center gap-1.5 rounded-full bg-indigo-600 px-3 text-xs font-semibold text-white shadow-sm shadow-indigo-500/20 dark:bg-violet-500/20 dark:text-violet-100 dark:ring-1 dark:ring-violet-400/40">
                     <Layers3 size={13} />
                     {t("chat.baseSelected")}
                   </div>
@@ -1101,7 +1101,7 @@ export function ImageChatPage() {
                 />
               ) : (
                 <div className="relative z-0 flex flex-col items-center gap-4 text-center text-slate-400 dark:text-slate-100">
-                  <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-white shadow-sm ring-1 ring-slate-200 dark:bg-slate-950/90 dark:text-slate-100 dark:ring-slate-600">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-white shadow-sm ring-1 ring-slate-200 dark:bg-slate-950/86 dark:text-violet-200 dark:ring-violet-400/35">
                     <Sparkles size={28} />
                   </div>
                   <div>
@@ -1130,7 +1130,7 @@ export function ImageChatPage() {
           </div>
 
           <div
-            className="relative flex h-44 shrink-0 flex-col border-t border-slate-200 bg-white/95 px-3 py-2.5 shadow-[0_-8px_24px_rgba(15,23,42,0.04)] lg:h-[var(--image-chat-history-panel-height)]"
+            className="relative flex h-44 shrink-0 flex-col border-t border-slate-200 bg-white/95 px-3 py-2.5 shadow-[0_-8px_24px_rgba(15,23,42,0.04)] dark:border-slate-700/80 dark:bg-[#0f1726] dark:shadow-[0_-18px_40px_rgba(0,0,0,0.24)] lg:h-[var(--image-chat-history-panel-height)]"
             style={historyPanelStyle}
           >
             <button
@@ -1138,16 +1138,16 @@ export function ImageChatPage() {
               aria-label={t("chat.resizeHistory")}
               title={t("chat.resizeHistoryTitle")}
               onPointerDown={(event) => handlePanelResizeStart("history", event)}
-              className="absolute inset-x-0 -top-1 z-20 hidden h-3 cursor-row-resize items-center justify-center transition-colors hover:bg-indigo-50/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 lg:flex"
+              className="absolute inset-x-0 -top-1 z-20 hidden h-3 cursor-row-resize items-center justify-center transition-colors hover:bg-indigo-50/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:hover:bg-violet-500/15 lg:flex"
             >
-              <span className="h-1 w-12 rounded-full bg-slate-300" />
+              <span className="h-1 w-12 rounded-full bg-slate-300 dark:bg-slate-600" />
             </button>
             <div className="mb-2 flex items-center justify-between gap-3">
               <div>
-                <div className="text-sm font-semibold text-slate-950">{t("chat.history")}</div>
+                <div className="text-sm font-semibold text-slate-950 dark:text-white">{t("chat.history")}</div>
               </div>
               {branchBaseRound ? (
-                <div className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700 dark:border-indigo-400/30 dark:bg-indigo-500/10 dark:text-indigo-200">
+                <div className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700 dark:border-violet-400/40 dark:bg-violet-500/15 dark:text-violet-100">
                   {t("chat.clickHistoryBase")}
                 </div>
               ) : null}
@@ -1179,7 +1179,7 @@ export function ImageChatPage() {
                 ))}
               </div>
             ) : (
-              <div className="flex min-h-0 flex-1 items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-sm text-slate-400">
+              <div className="flex min-h-0 flex-1 items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-sm text-slate-400 dark:border-slate-700 dark:bg-slate-950/40 dark:text-slate-500">
                 {t("chat.resultsAppearHere")}
               </div>
             )}
@@ -1187,7 +1187,7 @@ export function ImageChatPage() {
         </section>
 
         <aside
-          className="relative flex w-full shrink-0 flex-col border-t border-slate-200 bg-white lg:w-[var(--image-chat-right-panel-width)] lg:border-l lg:border-t-0"
+          className="relative flex w-full shrink-0 flex-col border-t border-slate-200 bg-white dark:border-slate-700/80 dark:bg-[#0f1726] dark:shadow-[-12px_0_36px_rgba(0,0,0,0.24)] dark:backdrop-blur-xl lg:w-[var(--image-chat-right-panel-width)] lg:border-l lg:border-t-0"
           style={rightPanelStyle}
         >
           <button
@@ -1195,22 +1195,22 @@ export function ImageChatPage() {
             aria-label={t("chat.resizeSettings")}
             title={t("chat.resizeSettingsTitle")}
             onPointerDown={(event) => handlePanelResizeStart("right", event)}
-            className="absolute left-[-5px] top-0 z-20 hidden h-full w-3 cursor-col-resize items-center justify-center transition-colors hover:bg-indigo-50/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 lg:flex"
+            className="absolute left-[-5px] top-0 z-20 hidden h-full w-3 cursor-col-resize items-center justify-center transition-colors hover:bg-indigo-50/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:hover:bg-violet-500/15 lg:flex"
           >
-            <span className="h-12 w-1 rounded-full bg-slate-300" />
+            <span className="h-12 w-1 rounded-full bg-slate-300 dark:bg-slate-600" />
           </button>
           <div className="min-h-0 flex-1 px-4 py-5 lg:overflow-y-auto lg:px-5">
             <div className="mb-5">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div>
-                  <div className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-950">
+                  <div className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-950 dark:text-white">
                     <Settings size={15} /> {t("chat.generationSettings")}
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => setRenameEnabled((current) => !current)}
-                  className="inline-flex h-8 items-center rounded-lg border border-slate-200 px-2.5 text-xs font-medium text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-900"
+                  className="inline-flex h-8 items-center rounded-lg border border-slate-200 px-2.5 text-xs font-medium text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-300 dark:hover:border-violet-400/50 dark:hover:text-violet-100"
                 >
                   <Pencil size={12} className="mr-1.5" /> {t("chat.rename")}
                 </button>
@@ -1220,13 +1220,13 @@ export function ImageChatPage() {
                   value={titleDraft}
                   onChange={(event) => setTitleDraft(event.target.value)}
                   disabled={!renameEnabled || renameSessionMutation.isPending}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-50 disabled:text-slate-500"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-50 disabled:text-slate-500 dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-100 dark:focus:border-violet-400 dark:focus:ring-violet-400/20 dark:disabled:bg-slate-900 dark:disabled:text-slate-500"
                 />
                 {renameEnabled ? (
                   <button
                     type="button"
                     onClick={handleRename}
-                    className="inline-flex items-center rounded-xl bg-indigo-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-500"
+                    className="inline-flex items-center rounded-xl bg-indigo-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 dark:bg-violet-500 dark:hover:bg-violet-400"
                     aria-label={t("chat.saveSessionName")}
                   >
                     {renameSessionMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
@@ -1276,7 +1276,7 @@ export function ImageChatPage() {
                   />
 
                   <div>
-                    <label className="mb-2 block text-sm font-semibold text-slate-950" htmlFor="image-chat-prompt">
+                    <label className="mb-2 block text-sm font-semibold text-slate-950 dark:text-white" htmlFor="image-chat-prompt">
                       {t("chat.prompt")}
                     </label>
                     <textarea
@@ -1285,7 +1285,7 @@ export function ImageChatPage() {
                       onChange={(event) => setDraft(event.target.value)}
                       rows={6}
                       placeholder={isProductMode ? t("chat.productPromptPlaceholder") : t("chat.freePromptPlaceholder")}
-                      className="w-full resize-none rounded-2xl border border-slate-200 px-3 py-3 text-sm leading-6 text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                      className="w-full resize-none rounded-2xl border border-slate-200 px-3 py-3 text-sm leading-6 text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100 dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-violet-400 dark:focus:ring-violet-400/20"
                     />
                   </div>
 
@@ -1321,7 +1321,7 @@ export function ImageChatPage() {
             </div>
           </div>
 
-          <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] shadow-[0_-8px_24px_rgba(15,23,42,0.10)] backdrop-blur lg:sticky lg:inset-x-auto lg:bottom-0 lg:p-4">
+          <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] shadow-[0_-8px_24px_rgba(15,23,42,0.10)] backdrop-blur dark:border-slate-800 dark:bg-slate-950/90 dark:shadow-[0_-18px_40px_rgba(0,0,0,0.32)] lg:sticky lg:inset-x-auto lg:bottom-0 lg:p-4">
             {baseRequirementMessage ? (
               <div className="mb-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
                 {baseRequirementMessage}
@@ -1331,7 +1331,7 @@ export function ImageChatPage() {
               type="button"
               onClick={handleGenerate}
               disabled={generateDisabled}
-              className="inline-flex w-full items-center justify-center rounded-2xl bg-indigo-600 px-4 py-3.5 text-sm font-semibold text-white shadow-lg shadow-indigo-600/20 transition-colors hover:bg-indigo-500 disabled:opacity-60"
+              className="inline-flex w-full items-center justify-center rounded-2xl bg-indigo-600 px-4 py-3.5 text-sm font-semibold text-white shadow-lg shadow-indigo-600/20 transition-colors hover:bg-indigo-500 disabled:opacity-60 dark:bg-gradient-to-r dark:from-indigo-500 dark:via-violet-500 dark:to-fuchsia-500 dark:shadow-violet-900/45 dark:ring-1 dark:ring-violet-300/35"
             >
               {generateMutation.isPending ? (
                 <Loader2 size={15} className="mr-2 animate-spin" />
@@ -1454,15 +1454,15 @@ function HistoryBranchStrip({
 
   return (
     <div
-      className="relative flex h-full shrink-0 gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-2"
+      className="relative flex h-full shrink-0 gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-2 dark:border-slate-700/80 dark:bg-[#151f33]"
       style={{ marginLeft: depthOffset }}
     >
       {branch.depth > 0 ? (
-        <div className="pointer-events-none absolute -left-3 top-1/2 h-px w-3 bg-slate-300" />
+        <div className="pointer-events-none absolute -left-3 top-1/2 h-px w-3 bg-slate-300 dark:bg-slate-700" />
       ) : null}
-      <div className="flex w-28 shrink-0 flex-col justify-between rounded-xl bg-white p-2 text-xs text-slate-500 ring-1 ring-slate-200">
+      <div className="flex w-28 shrink-0 flex-col justify-between rounded-xl bg-white p-2 text-xs text-slate-500 ring-1 ring-slate-200 dark:bg-[#0b1220] dark:text-slate-400 dark:ring-slate-600/80">
         <div>
-          <div className="flex items-center gap-1.5 font-semibold text-slate-800">
+          <div className="flex items-center gap-1.5 font-semibold text-slate-800 dark:text-slate-100">
             {branch.depth > 0 ? <Layers3 size={12} /> : <History size={12} />}
             {branchLabel}
           </div>
@@ -1477,7 +1477,7 @@ function HistoryBranchStrip({
               meta: `${t("chat.imageCount", { count: branch.candidates.length })} · ${formatDateTime(branch.created_at)}`,
             })
           }
-          className="line-clamp-3 rounded-md text-left text-[11px] leading-4 text-slate-400 transition-colors hover:text-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+          className="line-clamp-3 rounded-md text-left text-[11px] leading-4 text-slate-400 transition-colors hover:text-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:text-slate-500 dark:hover:text-violet-200"
         >
           {branch.prompt}
         </button>
@@ -1520,8 +1520,10 @@ function HistoryCandidateCard({
     const running = candidate.status === "queued" || candidate.status === "running";
     return (
       <div
-        className={`group/card relative aspect-square h-full min-w-[7rem] shrink-0 overflow-hidden rounded-2xl border bg-white transition-all ${
-          active ? "border-indigo-400 ring-2 ring-indigo-200" : "border-slate-200 hover:border-slate-300"
+        className={`group/card relative aspect-square h-full min-w-[7rem] shrink-0 overflow-hidden rounded-2xl border bg-white transition-all dark:bg-[#0b1220] ${
+          active
+            ? "border-indigo-400 ring-2 ring-indigo-200 dark:border-violet-400 dark:ring-violet-400/45"
+            : "border-slate-200 hover:border-slate-300 dark:border-slate-700 dark:hover:border-violet-400/45"
         }`}
       >
         <button
@@ -1536,13 +1538,13 @@ function HistoryCandidateCard({
             {active ? <Check size={13} className="shrink-0 text-indigo-600" /> : null}
           </div>
           <div className="flex flex-1 items-center justify-center">
-            <div className="relative flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-50 text-indigo-600 ring-1 ring-slate-200">
+            <div className="relative flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-50 text-indigo-600 ring-1 ring-slate-200 dark:bg-violet-500/12 dark:text-violet-200 dark:ring-violet-400/30">
               {running ? <Loader2 size={19} className="animate-spin" /> : <Sparkles size={19} />}
             </div>
           </div>
           <div>
-            <div className="truncate text-[11px] font-semibold text-slate-700">{placeholderStatusLabel(candidate, t)}</div>
-            <div className="mt-0.5 line-clamp-2 text-[10px] leading-3 text-slate-400">{candidate.prompt}</div>
+            <div className="truncate text-[11px] font-semibold text-slate-700 dark:text-slate-100">{placeholderStatusLabel(candidate, t)}</div>
+            <div className="mt-0.5 line-clamp-2 text-[10px] leading-3 text-slate-400 dark:text-slate-500">{candidate.prompt}</div>
           </div>
         </button>
       </div>
@@ -1554,9 +1556,11 @@ function HistoryCandidateCard({
   const asBase = round.generated_asset.id === branchBaseAssetId;
   return (
     <div
-      className={`group/card relative aspect-square h-full min-w-[7rem] shrink-0 overflow-hidden rounded-2xl border bg-white transition-all ${
-        active ? "border-indigo-400 ring-2 ring-indigo-200" : "border-slate-200 hover:border-slate-300"
-      } ${asBase ? "shadow-md shadow-indigo-200/70" : "shadow-sm shadow-slate-200/60"}`}
+        className={`group/card relative aspect-square h-full min-w-[7rem] shrink-0 overflow-hidden rounded-2xl border bg-white transition-all dark:bg-[#0b1220] ${
+        active
+          ? "border-indigo-400 ring-2 ring-indigo-200 dark:border-violet-400 dark:ring-violet-400/45"
+          : "border-slate-200 hover:border-slate-300 dark:border-slate-700 dark:hover:border-violet-400/45"
+      } ${asBase ? "shadow-md shadow-indigo-200/70 dark:shadow-violet-950/40" : "shadow-sm shadow-slate-200/60 dark:shadow-slate-950/30"}`}
     >
       <button type="button" onClick={() => onSelectRound(round.generated_asset.id)} className="block h-full w-full text-left">
         <img
@@ -1576,7 +1580,7 @@ function HistoryCandidateCard({
         </div>
       </button>
       {asBase ? (
-        <div className="absolute left-1.5 top-1.5 max-w-[calc(100%-2.75rem)] truncate rounded-full bg-indigo-600 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow-sm">
+        <div className="absolute left-1.5 top-1.5 max-w-[calc(100%-2.75rem)] truncate rounded-full bg-indigo-600 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow-sm dark:bg-violet-500/85 dark:ring-1 dark:ring-violet-200/30">
           {t("chat.baseImage")}
         </div>
       ) : null}
@@ -1608,13 +1612,13 @@ function SessionReferencePanel({
   t: ReturnType<typeof useI18n>["t"];
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4">
-      <div className="mb-2 text-sm font-semibold text-slate-950">{t("chat.sessionReferences")}</div>
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700/80 dark:bg-[#151f33]">
+      <div className="mb-2 text-sm font-semibold text-slate-950 dark:text-white">{t("chat.sessionReferences")}</div>
       <ImageDropZone
         ariaLabel={t("chat.uploadSessionReference")}
         multiple
         disabled={disabled || uploadBusy}
-        className="flex cursor-pointer items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-600 transition-colors hover:border-indigo-300 hover:bg-indigo-50/40"
+        className="flex cursor-pointer items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-600 transition-colors hover:border-indigo-300 hover:bg-indigo-50/40 dark:border-slate-600/80 dark:bg-[#0b1220] dark:text-slate-300 dark:hover:border-violet-400/55 dark:hover:bg-violet-500/10"
         onFiles={onFiles}
       >
         {({ isDragging }) => (
@@ -1624,7 +1628,7 @@ function SessionReferencePanel({
           </>
         )}
       </ImageDropZone>
-      <div className="mt-2 text-xs leading-5 text-slate-500">
+      <div className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
         {t("chat.selectedReferences", { selected: selectedAssetIds.length, max: maxSelectedCount })}
       </div>
       {assets.length ? (
@@ -1636,8 +1640,10 @@ function SessionReferencePanel({
             return (
               <div
                 key={asset.id}
-                className={`group relative overflow-hidden rounded-xl border bg-slate-50 ${
-                  selected ? "border-indigo-500 ring-2 ring-indigo-100" : "border-slate-200"
+                className={`group relative overflow-hidden rounded-xl border bg-slate-50 dark:bg-[#0b1220] ${
+                  selected
+                    ? "border-indigo-500 ring-2 ring-indigo-100 dark:border-violet-400 dark:ring-violet-400/45"
+                    : "border-slate-200 dark:border-slate-700"
                 }`}
               >
                 <a href={api.toApiUrl(asset.preview_url)} target="_blank" rel="noreferrer" title={asset.original_filename}>
@@ -1649,7 +1655,7 @@ function SessionReferencePanel({
                     className="h-20 w-full object-cover"
                   />
                 </a>
-                <label className="absolute bottom-1 left-1 inline-flex h-6 w-6 items-center justify-center rounded-md bg-white/95 text-slate-700 shadow-sm ring-1 ring-slate-200 dark:bg-slate-950/90 dark:text-slate-100 dark:ring-slate-700">
+                <label className="absolute bottom-1 left-1 inline-flex h-6 w-6 items-center justify-center rounded-md bg-white/95 text-slate-700 shadow-sm ring-1 ring-slate-200 dark:bg-slate-950/90 dark:text-violet-100 dark:ring-violet-400/35">
                   <input
                     type="checkbox"
                     checked={selected}
@@ -1665,7 +1671,7 @@ function SessionReferencePanel({
                   aria-label={t("chat.deleteSessionReference")}
                   onClick={() => onDelete(asset.id)}
                   disabled={deleting}
-                  className="absolute right-1 top-1 inline-flex h-7 w-7 items-center justify-center rounded-lg bg-white/90 text-slate-500 opacity-100 shadow-sm ring-1 ring-slate-200 transition-colors hover:text-red-600 disabled:opacity-60 md:opacity-0 md:group-hover:opacity-100"
+                  className="absolute right-1 top-1 inline-flex h-7 w-7 items-center justify-center rounded-lg bg-white/90 text-slate-500 opacity-100 shadow-sm ring-1 ring-slate-200 transition-colors hover:text-red-600 disabled:opacity-60 dark:bg-slate-950/90 dark:text-slate-300 dark:ring-slate-700 dark:hover:text-red-300 md:opacity-0 md:group-hover:opacity-100"
                 >
                   {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
                 </button>
@@ -1710,15 +1716,15 @@ function ProductAssociationPanel({
   const saveDisabled = attachBusy || !selectedRound || (!isProductMode && !targetProductId);
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-      <div className="mb-3 text-sm font-semibold text-zinc-900">{t("chat.saveToProduct")}</div>
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700/80 dark:bg-[#151f33]">
+      <div className="mb-3 text-sm font-semibold text-zinc-900 dark:text-white">{t("chat.saveToProduct")}</div>
       {isProductMode ? (
         product ? (
           <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-3">
             <ProductThumbnail sourceImage={sourceImage} alt={product.name} />
             <div className="min-w-0 self-center">
-              <div className="truncate text-sm font-medium text-zinc-900">{product.name}</div>
-              <div className="mt-1 text-xs text-zinc-500">{t("chat.productReferenceCount", { count: referenceImages.length })}</div>
+              <div className="truncate text-sm font-medium text-zinc-900 dark:text-slate-100">{product.name}</div>
+              <div className="mt-1 text-xs text-zinc-500 dark:text-slate-400">{t("chat.productReferenceCount", { count: referenceImages.length })}</div>
             </div>
           </div>
         ) : (
@@ -1728,11 +1734,11 @@ function ProductAssociationPanel({
         )
       ) : (
         <label className="block">
-          <span className="mb-1.5 block text-xs font-semibold text-slate-700">{t("chat.targetProduct")}</span>
+          <span className="mb-1.5 block text-xs font-semibold text-slate-700 dark:text-slate-200">{t("chat.targetProduct")}</span>
           <select
             value={targetProductId}
             onChange={(event) => onTargetProductChange(event.target.value)}
-            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100 dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-100 dark:focus:border-violet-400 dark:focus:ring-violet-400/20"
           >
             {products.length ? null : <option value="">{t("chat.noProducts")}</option>}
             {products.map((item) => (
@@ -1749,7 +1755,7 @@ function ProductAssociationPanel({
           {referenceImages.slice(0, 4).map((asset) => {
             const deleting = deletingReferenceAssetId === asset.id;
             return (
-              <div key={asset.id} className="group relative overflow-hidden rounded-md border border-zinc-200 bg-white">
+              <div key={asset.id} className="group relative overflow-hidden rounded-md border border-zinc-200 bg-white dark:border-slate-700 dark:bg-slate-950/70">
                 <a href={api.toApiUrl(asset.preview_url)} target="_blank" rel="noreferrer" title={asset.original_filename}>
                   <img
                     src={api.toApiUrl(asset.thumbnail_url)}
@@ -1764,7 +1770,7 @@ function ProductAssociationPanel({
                   aria-label={t("chat.deleteProductReference")}
                   onClick={() => onDeleteReference(asset.id)}
                   disabled={deleting}
-                  className="absolute right-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded bg-white/90 text-zinc-500 opacity-100 shadow-sm ring-1 ring-zinc-200 transition-colors hover:text-red-600 disabled:opacity-60 md:opacity-0 md:group-hover:opacity-100"
+                  className="absolute right-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded bg-white/90 text-zinc-500 opacity-100 shadow-sm ring-1 ring-zinc-200 transition-colors hover:text-red-600 disabled:opacity-60 dark:bg-slate-950/90 dark:text-slate-300 dark:ring-slate-700 dark:hover:text-red-300 md:opacity-0 md:group-hover:opacity-100"
                 >
                   {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
                 </button>
@@ -1774,13 +1780,13 @@ function ProductAssociationPanel({
         </div>
       ) : null}
 
-      <div className="mt-4 border-t border-slate-200 pt-3">
+      <div className="mt-4 border-t border-slate-200 pt-3 dark:border-slate-800">
         {selectedRound ? (
-          <div className="mb-2 text-[11px] leading-5 text-slate-500">
+          <div className="mb-2 text-[11px] leading-5 text-slate-500 dark:text-slate-400">
             {t("chat.selectedCandidate", { size: formatImageSizeValue(selectedRound.size) })}
           </div>
         ) : (
-          <div className="mb-2 rounded-xl border border-dashed border-slate-200 bg-white px-3 py-2 text-center text-sm text-slate-400">
+          <div className="mb-2 rounded-xl border border-dashed border-slate-200 bg-white px-3 py-2 text-center text-sm text-slate-400 dark:border-slate-700 dark:bg-slate-950/45 dark:text-slate-500">
             {t("chat.selectHistoryFirst")}
           </div>
         )}
@@ -1789,7 +1795,7 @@ function ProductAssociationPanel({
             type="button"
             onClick={() => onAttach("reference")}
             disabled={saveDisabled}
-            className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:border-slate-300 hover:text-slate-950 disabled:opacity-60"
+            className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:border-slate-300 hover:text-slate-950 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-200 dark:hover:border-violet-400/55 dark:hover:text-violet-100"
           >
             {attachBusy ? <Loader2 size={14} className="mr-2 animate-spin" /> : <Check size={14} className="mr-2" />}
             {isProductMode ? t("chat.addReference") : t("chat.saveAsReference")}
@@ -1799,7 +1805,7 @@ function ProductAssociationPanel({
               type="button"
               onClick={() => onAttach("main_source")}
               disabled={saveDisabled}
-              className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:opacity-60"
+              className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:opacity-60 dark:bg-violet-500/20 dark:text-violet-100 dark:ring-1 dark:ring-violet-400/35 dark:hover:bg-violet-500/30"
             >
               {attachBusy ? <Loader2 size={14} className="mr-2 animate-spin" /> : <ImageIcon size={14} className="mr-2" />}
               {t("chat.setMainSource")}
@@ -1813,11 +1819,11 @@ function ProductAssociationPanel({
 
 function ProductThumbnail({ sourceImage, alt }: { sourceImage: SourceAsset | null; alt: string }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white">
+    <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-slate-700 dark:bg-slate-950/70">
       {sourceImage ? (
         <img src={api.toApiUrl(sourceImage.thumbnail_url)} alt={alt} decoding="async" className="h-24 w-full object-cover" />
       ) : (
-        <div className="flex h-24 items-center justify-center text-zinc-300">
+        <div className="flex h-24 items-center justify-center text-zinc-300 dark:text-slate-500">
           <ImageIcon size={20} />
         </div>
       )}

@@ -1164,10 +1164,10 @@ export function ProductDetailPage() {
   );
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-white text-sm text-zinc-900 dark:bg-slate-950">
+    <div className="flex h-screen flex-col overflow-hidden bg-white text-sm text-zinc-900 dark:bg-[#060a12] dark:text-slate-100">
       {!topChromeCollapsed ? <TopNav onHome={() => navigate("/products")} breadcrumbs={product.name} /> : null}
 
-      <main className="flex min-h-0 flex-1 flex-col border-t border-slate-200 bg-slate-50">
+      <main className="flex min-h-0 flex-1 flex-col border-t border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-[#060a12]">
         {error ? (
           <div className="z-20 border-b border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700">
             <AlertCircle size={14} className="mr-2 inline" /> {error}
@@ -1189,15 +1189,15 @@ export function ProductDetailPage() {
           </div>
         ) : null}
 
-        <div className="relative flex min-h-0 flex-1 overflow-hidden bg-slate-50 dark:bg-[#06111f]">
-          <div className="absolute inset-0 bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] [background-size:18px_18px] dark:bg-[radial-gradient(rgba(125,158,190,0.32)_1px,transparent_1px)]" />
-          <div className="absolute inset-0 bg-gradient-to-br from-white/60 via-transparent to-indigo-50/40 dark:from-slate-950/70 dark:via-[#06111f]/45 dark:to-[#0b1f35]/40" />
+        <div className="relative flex min-h-0 flex-1 overflow-hidden bg-slate-50 dark:bg-[#0b1220]">
+          <div className="absolute inset-0 bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] [background-size:18px_18px] dark:bg-[radial-gradient(rgba(148,163,184,0.2)_1px,transparent_1px)]" />
+          <div className="absolute inset-0 bg-gradient-to-br from-white/60 via-transparent to-indigo-50/40 dark:from-[#060a12]/78 dark:via-transparent dark:to-[#151f33]/70" />
           <section className="relative z-10 min-w-0 flex-1 overflow-hidden">
             <div data-canvas-control className="pointer-events-none absolute right-4 top-4 z-30">
               <button
                 type="button"
                 onClick={() => setTopChromeCollapsed((collapsed) => !collapsed)}
-                className="pointer-events-auto inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 bg-white/90 text-zinc-600 shadow-sm backdrop-blur transition-colors hover:bg-white hover:text-zinc-900"
+                className="pointer-events-auto inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 bg-white/90 text-zinc-600 shadow-sm backdrop-blur transition-colors hover:bg-white hover:text-zinc-900 dark:border-slate-700/80 dark:bg-[#151f33]/92 dark:text-slate-300 dark:shadow-black/20 dark:hover:bg-[#1a2740] dark:hover:text-white"
                 aria-label={topChromeCollapsed ? t("detail.restoreCanvas") : t("detail.maximizeCanvas")}
                 title={topChromeCollapsed ? t("detail.restoreCanvas") : t("detail.maximizeCanvas")}
               >
@@ -1216,7 +1216,7 @@ export function ProductDetailPage() {
               onWheel={handleCanvasWheel}
             >
               {workflowQuery.isLoading ? (
-                <div className="flex h-full items-center justify-center text-zinc-400">
+                <div className="flex h-full items-center justify-center text-zinc-400 dark:text-slate-500">
                   <Loader2 size={24} className="animate-spin" />
                 </div>
               ) : workflow ? (
@@ -1279,7 +1279,7 @@ export function ProductDetailPage() {
                       type="button"
                       onClick={() => deleteEdgeMutation.mutate(edge.id)}
                       disabled={structureBusy}
-                      className="absolute z-20 flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-zinc-300 bg-white text-[12px] leading-none text-zinc-500 shadow-sm hover:border-red-300 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                      className="absolute z-20 flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-zinc-300 bg-white text-[12px] leading-none text-zinc-500 shadow-sm hover:border-red-300 hover:bg-red-50 hover:text-red-600 disabled:opacity-50 dark:border-slate-600 dark:bg-[#0f1726] dark:text-slate-300 dark:hover:border-red-400/60 dark:hover:bg-red-500/10 dark:hover:text-red-200"
                       style={{
                         left: (start.x + end.x) / 2,
                         top: (start.y + end.y) / 2,
@@ -1335,18 +1335,18 @@ export function ProductDetailPage() {
                   </div>
                 </div>
               ) : (
-                <div className="flex h-full items-center justify-center text-xs text-zinc-500">
+                <div className="flex h-full items-center justify-center text-xs text-zinc-500 dark:text-slate-400">
                   {t("detail.workflowLoadFailed")}
                 </div>
               )}
             </div>
 
             <div data-canvas-control className="pointer-events-none absolute bottom-4 left-4 z-30">
-              <div className="pointer-events-auto flex items-center gap-1 rounded-lg border border-zinc-200 bg-white/90 p-1 shadow-sm backdrop-blur">
+              <div className="pointer-events-auto flex items-center gap-1 rounded-lg border border-zinc-200 bg-white/90 p-1 shadow-sm backdrop-blur dark:border-slate-700/80 dark:bg-[#151f33]/92 dark:shadow-black/20">
               <button
                 type="button"
                 onClick={() => updateZoom(zoom - 0.1)}
-                className="inline-flex items-center rounded px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50"
+                className="inline-flex items-center rounded px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50 dark:text-slate-300 dark:hover:bg-violet-500/15 dark:hover:text-white"
                 aria-label={t("detail.zoomOut")}
               >
                 <ZoomOut size={13} />
@@ -1354,7 +1354,7 @@ export function ProductDetailPage() {
               <button
                 type="button"
                 onClick={() => updateZoom(1)}
-                className="rounded px-2 py-1 text-xs tabular-nums text-zinc-600 hover:bg-zinc-50"
+                className="rounded px-2 py-1 text-xs tabular-nums text-zinc-600 hover:bg-zinc-50 dark:text-slate-300 dark:hover:bg-violet-500/15 dark:hover:text-white"
                 aria-label={t("detail.resetZoom")}
               >
                 {Math.round(zoom * 100)}%
@@ -1362,7 +1362,7 @@ export function ProductDetailPage() {
               <button
                 type="button"
                 onClick={() => updateZoom(zoom + 0.1)}
-                className="inline-flex items-center rounded px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50"
+                className="inline-flex items-center rounded px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50 dark:text-slate-300 dark:hover:bg-violet-500/15 dark:hover:text-white"
                 aria-label={t("detail.zoomIn")}
               >
                 <ZoomIn size={13} />
@@ -1371,7 +1371,7 @@ export function ProductDetailPage() {
             </div>
             {selectedGroupCount > 1 ? (
               <div data-canvas-control className="pointer-events-none absolute left-1/2 top-4 z-30 -translate-x-1/2">
-                <div className="pointer-events-auto min-w-[22rem] rounded-xl border border-indigo-200 bg-white/95 p-2.5 text-sm font-semibold text-indigo-700 shadow-lg shadow-indigo-950/10 backdrop-blur">
+                <div className="pointer-events-auto min-w-[22rem] rounded-xl border border-indigo-200 bg-white/95 p-2.5 text-sm font-semibold text-indigo-700 shadow-lg shadow-indigo-950/10 backdrop-blur dark:border-violet-400/50 dark:bg-[#151f33]/95 dark:text-violet-100 dark:shadow-black/30">
                   <div className="flex items-center gap-2">
                     <Check size={16} strokeWidth={2.5} />
                     <span className="mr-auto">{t("detail.selectedCount", { count: selectedGroupCount })}</span>
@@ -1379,7 +1379,7 @@ export function ProductDetailPage() {
                       type="button"
                       onClick={() => setTemplateSaveOpen((open) => !open)}
                       disabled={createUserTemplateGroupMutation.isPending}
-                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 text-xs font-semibold text-indigo-700 shadow-sm transition-colors hover:border-indigo-300 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 text-xs font-semibold text-indigo-700 shadow-sm transition-colors hover:border-indigo-300 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-violet-400/45 dark:bg-violet-500/16 dark:text-violet-100 dark:hover:border-violet-300/70 dark:hover:bg-violet-500/25"
                     >
                       {createUserTemplateGroupMutation.isPending ? (
                         <Loader2 size={14} className="animate-spin" />
@@ -1413,7 +1413,7 @@ export function ProductDetailPage() {
                   </div>
                   {templateSaveOpen ? (
                     <form
-                      className="mt-2 grid gap-2 border-t border-indigo-100 pt-2"
+                      className="mt-2 grid gap-2 border-t border-indigo-100 pt-2 dark:border-violet-400/20"
                       onSubmit={(event) => {
                         event.preventDefault();
                         createUserTemplateGroupMutation.mutate();
@@ -1422,14 +1422,14 @@ export function ProductDetailPage() {
                       <input
                         value={templateSaveTitle}
                         onChange={(event) => setTemplateSaveTitle(event.target.value)}
-                        className="h-9 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 focus:border-indigo-300"
+                        className="h-9 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 focus:border-indigo-300 dark:border-slate-700 dark:bg-[#0b1220] dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-violet-400"
                         placeholder={t("detail.templateName")}
                         maxLength={255}
                       />
                       <input
                         value={templateSaveDescription}
                         onChange={(event) => setTemplateSaveDescription(event.target.value)}
-                        className="h-9 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 focus:border-indigo-300"
+                        className="h-9 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 focus:border-indigo-300 dark:border-slate-700 dark:bg-[#0b1220] dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-violet-400"
                         placeholder={t("detail.templateDescription")}
                         maxLength={1000}
                       />
@@ -1437,14 +1437,14 @@ export function ProductDetailPage() {
                         <button
                           type="button"
                           onClick={() => setTemplateSaveOpen(false)}
-                          className="h-8 rounded-lg px-2.5 text-xs font-semibold text-zinc-500 hover:bg-zinc-50"
+                          className="h-8 rounded-lg px-2.5 text-xs font-semibold text-zinc-500 hover:bg-zinc-50 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
                         >
                           {t("detail.cancel")}
                         </button>
                         <button
                           type="submit"
                           disabled={createUserTemplateGroupMutation.isPending}
-                          className="inline-flex h-8 items-center rounded-lg bg-zinc-950 px-3 text-xs font-semibold text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="inline-flex h-8 items-center rounded-lg bg-zinc-950 px-3 text-xs font-semibold text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-violet-500 dark:hover:bg-violet-400"
                         >
                           {t("detail.save")}
                         </button>
@@ -1462,7 +1462,7 @@ export function ProductDetailPage() {
               <button
                 type="button"
                 onClick={() => setSidebarCollapsed(false)}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-zinc-200 bg-white/95 text-zinc-500 opacity-0 shadow-sm transition-opacity hover:text-zinc-900 focus:opacity-100 focus:outline-none group-hover/sidebar-expand:opacity-100"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-zinc-200 bg-white/95 text-zinc-500 opacity-0 shadow-sm transition-opacity hover:text-zinc-900 focus:opacity-100 focus:outline-none group-hover/sidebar-expand:opacity-100 dark:border-slate-700/80 dark:bg-[#151f33]/95 dark:text-slate-300 dark:hover:text-white"
                 aria-label={t("detail.expandSidebar")}
                 title={t("detail.expandSidebar")}
               >
@@ -1471,7 +1471,7 @@ export function ProductDetailPage() {
             </div>
             <div
               data-canvas-control
-              className="absolute right-4 top-16 z-30 flex w-14 flex-col items-center gap-2 rounded-2xl border border-slate-800 bg-slate-950/95 p-2 shadow-xl shadow-slate-950/20 backdrop-blur"
+              className="absolute right-4 top-16 z-30 flex w-14 flex-col items-center gap-2 rounded-2xl border border-slate-700/80 bg-[#0f1726]/95 p-2 shadow-xl shadow-slate-950/25 backdrop-blur"
             >
               {renderWorkflowToolbarButtons()}
               <SidebarTabButton active={false} label={t("detail.tabDetails")} title={t("detail.tabDetails")} icon={<Settings2 size={15} />} onClick={() => openSidebarTab("details")} />
@@ -1481,19 +1481,19 @@ export function ProductDetailPage() {
             </div>
             </>
           ) : (
-          <div className="relative z-20 flex shrink-0 border-l border-slate-200 bg-white/95 shadow-[-8px_0_24px_-20px_rgba(15,23,42,0.35)] backdrop-blur">
+          <div className="relative z-20 flex shrink-0 border-l border-slate-200 bg-white/95 shadow-[-8px_0_24px_-20px_rgba(15,23,42,0.35)] backdrop-blur dark:border-slate-700/80 dark:bg-[#0f1726] dark:shadow-[-16px_0_42px_rgba(0,0,0,0.28)]">
             <div data-canvas-control className="group/sidebar-collapse absolute left-[-28px] top-0 z-30 flex h-full w-7 items-center justify-center">
               <button
                 type="button"
                 onClick={() => setSidebarCollapsed(true)}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-zinc-200 bg-white/95 text-zinc-500 opacity-0 shadow-sm transition-opacity hover:text-zinc-900 focus:opacity-100 focus:outline-none group-hover/sidebar-collapse:opacity-100"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-zinc-200 bg-white/95 text-zinc-500 opacity-0 shadow-sm transition-opacity hover:text-zinc-900 focus:opacity-100 focus:outline-none group-hover/sidebar-collapse:opacity-100 dark:border-slate-700/80 dark:bg-[#151f33]/95 dark:text-slate-300 dark:hover:text-white"
                 aria-label={t("detail.collapseSidebar")}
                 title={t("detail.collapseSidebar")}
               >
                 <ChevronRight size={14} />
               </button>
             </div>
-            <div data-canvas-control className="flex w-14 shrink-0 flex-col items-center gap-2 border-r border-slate-800 bg-slate-950 px-1.5 py-3">
+            <div data-canvas-control className="flex w-14 shrink-0 flex-col items-center gap-2 border-r border-slate-800 bg-slate-950 px-1.5 py-3 dark:border-slate-700/80 dark:bg-[#0b1220]">
               {renderWorkflowToolbarButtons()}
               <SidebarTabButton
                 active={activeSidebarTab === "details"}
@@ -1525,22 +1525,22 @@ export function ProductDetailPage() {
               />
             </div>
             <aside
-              className="relative flex shrink-0 flex-col bg-white/95"
+              className="relative flex shrink-0 flex-col bg-white/95 dark:bg-[#111a2b]"
               style={{ width: inspectorWidth }}
             >
               <div
                 role="separator"
                 aria-label={t("detail.resizeSidebar")}
                 onPointerDown={startInspectorResize}
-                className="absolute left-[-4px] top-0 h-full w-2 cursor-col-resize hover:bg-zinc-300/50"
+                className="absolute left-[-4px] top-0 h-full w-2 cursor-col-resize hover:bg-zinc-300/50 dark:hover:bg-violet-400/20"
               />
-              <div className="flex h-12 shrink-0 items-center justify-between border-b border-zinc-200 px-4">
+              <div className="flex h-12 shrink-0 items-center justify-between border-b border-zinc-200 px-4 dark:border-slate-700/80">
                 <div className="flex items-center">
-                {activeSidebarTab === "details" ? <Settings2 size={14} className="mr-2 text-zinc-400" /> : null}
-                {activeSidebarTab === "runs" ? <CircleDot size={14} className="mr-2 text-zinc-400" /> : null}
-                {activeSidebarTab === "images" ? <ImageIcon size={14} className="mr-2 text-zinc-400" /> : null}
-                {activeSidebarTab === "templates" ? <Layers3 size={14} className="mr-2 text-zinc-400" /> : null}
-                <span className="text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
+                {activeSidebarTab === "details" ? <Settings2 size={14} className="mr-2 text-zinc-400 dark:text-slate-400" /> : null}
+                {activeSidebarTab === "runs" ? <CircleDot size={14} className="mr-2 text-zinc-400 dark:text-slate-400" /> : null}
+                {activeSidebarTab === "images" ? <ImageIcon size={14} className="mr-2 text-zinc-400 dark:text-slate-400" /> : null}
+                {activeSidebarTab === "templates" ? <Layers3 size={14} className="mr-2 text-zinc-400 dark:text-slate-400" /> : null}
+                <span className="text-[11px] font-semibold uppercase tracking-widest text-zinc-500 dark:text-slate-300">
                   {activeSidebarTab === "details"
                     ? t("detail.tabDetails")
                     : activeSidebarTab === "runs"
@@ -1582,7 +1582,7 @@ export function ProductDetailPage() {
                       })}
                     />
                   ) : (
-                    <div className="text-xs text-zinc-500">
+                    <div className="text-xs text-zinc-500 dark:text-slate-400">
                       {t("detail.selectNodeHint")}
                     </div>
                   )

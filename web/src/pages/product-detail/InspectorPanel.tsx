@@ -53,14 +53,14 @@ const SAVE_STATUS_LABEL_KEYS: Record<SaveStatus, TranslationKey> = {
 };
 
 const SAVE_STATUS_CLASS_NAMES: Record<SaveStatus, string> = {
-  idle: "border-zinc-200 bg-zinc-50 text-zinc-500",
-  saving: "border-blue-200 bg-blue-50 text-blue-700",
-  saved: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  failed: "border-red-200 bg-red-50 text-red-700",
+  idle: "border-zinc-200 bg-zinc-50 text-zinc-500 dark:border-slate-700 dark:bg-[#0b1220] dark:text-slate-300",
+  saving: "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-400/35 dark:bg-blue-500/12 dark:text-blue-200",
+  saved: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-400/35 dark:bg-emerald-500/12 dark:text-emerald-200",
+  failed: "border-red-200 bg-red-50 text-red-700 dark:border-red-400/35 dark:bg-red-500/12 dark:text-red-200",
 };
 
 const ADD_COPY_FIELD_BUTTON_CLASS_NAME =
-  "inline-flex items-center gap-1 rounded-md border border-dashed border-zinc-200 px-2 py-1 text-[11px] font-medium text-zinc-500 transition-colors hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-700";
+  "inline-flex items-center gap-1 rounded-md border border-dashed border-zinc-200 px-2 py-1 text-[11px] font-medium text-zinc-500 transition-colors hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-700 dark:border-slate-700 dark:text-slate-400 dark:hover:border-violet-400/45 dark:hover:bg-violet-500/12 dark:hover:text-slate-100";
 
 const REFERENCE_ROLE_OPTIONS: Array<{ value: string; labelKey: TranslationKey }> = [
   { value: "reference", labelKey: "detail.referenceRole.reference" },
@@ -152,17 +152,17 @@ export function InspectorPanel({
 
   return (
     <div className="space-y-3">
-      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/50">
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/50 dark:border-slate-700/80 dark:bg-[#151f33] dark:shadow-black/20">
         <div className="flex items-start gap-3">
-          <span className="rounded-xl border border-indigo-100 bg-indigo-50 p-2 text-indigo-700">
+          <span className="rounded-xl border border-indigo-100 bg-indigo-50 p-2 text-indigo-700 dark:border-violet-400/35 dark:bg-violet-500/15 dark:text-violet-100">
             <InspectorIcon size={16} />
           </span>
           <div className="min-w-0 flex-1">
-            <div className="truncate text-base font-semibold text-zinc-950">
+            <div className="truncate text-base font-semibold text-zinc-950 dark:text-white">
               {displayTitle}
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-1.5">
-              <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-[10px] font-medium text-zinc-600">
+              <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-[10px] font-medium text-zinc-600 dark:border-zinc-200 dark:bg-white dark:text-zinc-700">
                 {displayLabel}
               </span>
               <span
@@ -193,7 +193,7 @@ export function InspectorPanel({
               </span>
             </div>
             {node.last_run_at ? (
-              <div className="mt-2 text-[11px] text-zinc-400">
+              <div className="mt-2 text-[11px] text-zinc-400 dark:text-slate-400">
                 {t("detail.inspector.lastRun", { time: formatDateTime(node.last_run_at) })}
               </div>
             ) : null}
@@ -211,7 +211,7 @@ export function InspectorPanel({
                 type="button"
                 onClick={onRun}
                 disabled={runActionState.disabled}
-                className="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
+                className="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-500 disabled:opacity-50 dark:bg-violet-500 dark:hover:bg-violet-400"
                 title={runActionState.title}
               >
                 {runActionState.pending ? (
@@ -227,7 +227,7 @@ export function InspectorPanel({
                 type="button"
                 onClick={onCancelRun}
                 disabled={cancelBusy}
-                className="inline-flex items-center justify-center rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-100 disabled:opacity-50"
+                className="inline-flex items-center justify-center rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-100 disabled:opacity-50 dark:border-red-400/40 dark:bg-red-500/10 dark:text-red-200 dark:hover:bg-red-500/16"
                 title={t("detail.inspector.cancelCurrentRun")}
               >
                 {cancelBusy ? (
@@ -243,7 +243,7 @@ export function InspectorPanel({
                 type="button"
                 onClick={onDelete}
                 disabled={busy}
-                className="inline-flex items-center justify-center rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+                className="inline-flex items-center justify-center rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 dark:border-red-400/40 dark:bg-[#0b1220] dark:text-red-200 dark:hover:bg-red-500/12"
               >
                 <Trash2 size={13} className="mr-1.5" /> {t("detail.delete")}
               </button>
@@ -252,12 +252,12 @@ export function InspectorPanel({
         ) : null}
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/50">
-        <div className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/50 dark:border-slate-700/80 dark:bg-[#151f33] dark:shadow-black/20">
+        <div className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-zinc-500 dark:text-slate-300">
           {t("detail.inspector.config")}
         </div>
         <label className="mb-3 block">
-          <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-widest text-zinc-400">
+          <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-widest text-zinc-400 dark:text-slate-400">
             {t("detail.inspector.nodeName")}
           </span>
           <input
@@ -265,10 +265,10 @@ export function InspectorPanel({
             onChange={(event) =>
               onDraftChange({ ...draft, title: event.target.value })
             }
-            className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-900 focus:ring-1 focus:ring-zinc-900"
+            className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-900 focus:ring-1 focus:ring-zinc-900 dark:border-slate-700 dark:bg-[#0b1220] dark:text-slate-100 dark:focus:border-violet-400 dark:focus:ring-violet-400"
           />
         </label>
-        <div className="mb-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600">
+        <div className="mb-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600 dark:border-slate-700 dark:bg-[#0b1220] dark:text-slate-300">
           {node.node_type === "image_generation"
             ? t("detail.inspector.description.imageGeneration")
             : node.node_type === "reference_image"
@@ -457,8 +457,8 @@ function ReferenceImageInspector({
             </span>
           </button>
           <DownloadLink image={image} variant="overlay" />
-          <div className="absolute left-2 top-2 inline-flex items-center rounded-md bg-white/95 px-2 py-1 text-[10px] font-medium text-indigo-700 shadow-sm ring-1 ring-indigo-100">
-            <Sparkles size={11} className="mr-1" />
+          <div className="absolute left-2 top-2 inline-flex items-center rounded-full border border-violet-400/60 bg-slate-950/88 px-2.5 py-1 text-[11px] font-semibold text-violet-100 shadow-lg shadow-violet-950/35 ring-1 ring-violet-300/20 backdrop-blur">
+            <Sparkles size={12} className="mr-1 text-violet-300" />
             {t("detail.canUseAsReference")}
           </div>
         </div>

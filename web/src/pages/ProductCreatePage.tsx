@@ -20,6 +20,11 @@ interface PreviewNode {
   tone?: "input" | "copy" | "image" | "output" | "blank";
 }
 
+interface PreviewPortUsage {
+  inputs: Set<string>;
+  outputs: Set<string>;
+}
+
 interface PreviewEdge {
   from: string;
   to: string;
@@ -40,7 +45,7 @@ interface CanvasPlanOption {
 
 const PREVIEW_MIN_WIDTH = 920;
 const PREVIEW_NODE_WIDTH = 248;
-const NODE_HEIGHT = 74;
+const NODE_HEIGHT = 92;
 
 const NODE_TYPE_LABEL_KEYS: Record<WorkflowNodeType, TranslationKey> = {
   product_context: "create.productContext",
@@ -61,11 +66,11 @@ const stageLabelKeys: Record<string, TranslationKey> = {
 const stageOrder = ["blank", "listing", "detail", "gallery", "content", "campaign"];
 
 const toneClasses: Record<NonNullable<PreviewNode["tone"]>, string> = {
-  input: "border-sky-100 bg-sky-50/90 text-sky-900",
-  copy: "border-violet-100 bg-violet-50/90 text-violet-900",
-  image: "border-emerald-100 bg-emerald-50/90 text-emerald-900",
-  output: "border-amber-100 bg-amber-50/90 text-amber-900",
-  blank: "border-dashed border-zinc-300 bg-white/80 text-zinc-500",
+  input: "border-sky-100 bg-sky-50/90 text-sky-900 dark:border-sky-400/35 dark:bg-sky-500/12 dark:text-sky-100",
+  copy: "border-violet-100 bg-violet-50/90 text-violet-900 dark:border-violet-400/40 dark:bg-violet-500/16 dark:text-violet-100",
+  image: "border-emerald-100 bg-emerald-50/90 text-emerald-900 dark:border-emerald-400/35 dark:bg-emerald-500/12 dark:text-emerald-100",
+  output: "border-amber-100 bg-amber-50/90 text-amber-900 dark:border-amber-400/35 dark:bg-amber-500/12 dark:text-amber-100",
+  blank: "border-dashed border-zinc-300 bg-white/80 text-zinc-500 dark:border-slate-600 dark:bg-[#151f33]/80 dark:text-slate-300",
 };
 
 function nodeTone(nodeType: WorkflowNodeType, outputNodeKeys: Set<string>, nodeKey: string): PreviewNode["tone"] {
@@ -237,53 +242,53 @@ export function ProductCreatePage() {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-100 px-4 py-4 text-zinc-900 dark:bg-slate-950 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-zinc-100 px-4 py-4 text-zinc-900 dark:bg-[#060a12] dark:text-slate-100 sm:px-6 lg:px-8">
       <main className="mx-auto max-w-[1480px]">
-        <div className="mb-5 flex items-start justify-between gap-4 border-b border-zinc-200 pb-4">
+        <div className="mb-5 flex items-start justify-between gap-4 border-b border-zinc-200 pb-4 dark:border-slate-800">
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-md bg-blue-50 text-blue-600">
+            <div className="flex h-11 w-11 items-center justify-center rounded-md bg-blue-50 text-blue-600 dark:border dark:border-violet-400/35 dark:bg-violet-500/15 dark:text-violet-100">
               <Tag size={21} />
             </div>
             <div>
-              <h1 className="text-xl font-semibold text-zinc-950">{t("create.title")}</h1>
-              <p className="mt-1 text-sm text-zinc-500">{t("create.description")}</p>
+              <h1 className="text-xl font-semibold text-zinc-950 dark:text-white">{t("create.title")}</h1>
+              <p className="mt-1 text-sm text-zinc-500 dark:text-slate-400">{t("create.description")}</p>
             </div>
           </div>
           <button
             type="button"
             onClick={() => navigate("/products")}
             aria-label={t("create.close")}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-200/70 text-zinc-500 transition-colors hover:bg-zinc-300 hover:text-zinc-900"
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-200/70 text-zinc-500 transition-colors hover:bg-zinc-300 hover:text-zinc-900 dark:border dark:border-slate-700/80 dark:bg-[#151f33] dark:text-slate-300 dark:hover:bg-[#1a2740] dark:hover:text-white"
           >
             <X size={18} />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
-          <section className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
-            <h2 className="text-base font-semibold text-zinc-950">{t("create.productInfo")}</h2>
+          <section className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm dark:border-slate-700/80 dark:bg-[#0f1726] dark:shadow-[0_16px_48px_rgba(0,0,0,0.22)]">
+            <h2 className="text-base font-semibold text-zinc-950 dark:text-white">{t("create.productInfo")}</h2>
 
             <div className="mt-5">
-              <label className="mb-2 block text-sm font-medium text-zinc-700">
+              <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-slate-300">
                 {t("create.mainImage")} <span className="text-red-500">*</span>
               </label>
               <ImageDropZone
                 ariaLabel={t("create.uploadAria")}
-                className="flex aspect-[1.55] cursor-pointer flex-col items-center justify-center rounded-md border border-dashed border-zinc-300 bg-zinc-50/40 p-7 text-zinc-500 transition-colors hover:border-blue-300 hover:bg-blue-50/40"
+                className="flex aspect-[1.55] cursor-pointer flex-col items-center justify-center rounded-md border border-dashed border-zinc-300 bg-zinc-50/40 p-7 text-zinc-500 transition-colors hover:border-blue-300 hover:bg-blue-50/40 dark:border-slate-700 dark:bg-[#0b1220] dark:text-slate-400 dark:hover:border-violet-400/55 dark:hover:bg-violet-500/10"
                 onFiles={handleImageFiles}
               >
                 {({ isDragging }) => (
                   <>
-                    <ImagePlus size={34} className="mb-3 text-zinc-400" />
-                    <p className="text-sm font-medium text-zinc-700">{isDragging ? t("create.uploadDrop") : previewLabel}</p>
-                    <p className="mt-2 text-xs text-zinc-500">{t("create.uploadHint")}</p>
+                    <ImagePlus size={34} className="mb-3 text-zinc-400 dark:text-slate-500" />
+                    <p className="text-sm font-medium text-zinc-700 dark:text-slate-200">{isDragging ? t("create.uploadDrop") : previewLabel}</p>
+                    <p className="mt-2 text-xs text-zinc-500 dark:text-slate-400">{t("create.uploadHint")}</p>
                   </>
                 )}
               </ImageDropZone>
             </div>
 
             <div className="mt-6">
-              <label className="mb-2 block text-sm font-medium text-zinc-700">
+              <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-slate-300">
                 {t("create.productName")} <span className="text-red-500">*</span>
               </label>
               <input
@@ -292,10 +297,10 @@ export function ProductCreatePage() {
                 maxLength={60}
                 value={name}
                 onChange={(event) => setName(event.target.value)}
-                className="w-full rounded-md border border-zinc-200 bg-white px-3 py-2.5 text-sm transition-shadow placeholder:text-zinc-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                className="w-full rounded-md border border-zinc-200 bg-white px-3 py-2.5 text-sm transition-shadow placeholder:text-zinc-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-[#0b1220] dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-violet-400 dark:focus:ring-violet-400/20"
                 placeholder={t("create.namePlaceholder")}
               />
-              <div className="mt-1 text-right text-xs text-zinc-400">{name.length} / 60</div>
+              <div className="mt-1 text-right text-xs text-zinc-400 dark:text-slate-500">{name.length} / 60</div>
             </div>
 
             {error ? <div className="mt-4 text-sm text-red-600">{error}</div> : null}
@@ -304,14 +309,14 @@ export function ProductCreatePage() {
               <button
                 type="button"
                 onClick={() => navigate("/products")}
-                className="flex-1 rounded-md border border-zinc-200 px-4 py-2.5 text-sm font-medium text-zinc-700 transition-colors hover:border-zinc-300 hover:bg-zinc-50"
+                className="flex-1 rounded-md border border-zinc-200 px-4 py-2.5 text-sm font-medium text-zinc-700 transition-colors hover:border-zinc-300 hover:bg-zinc-50 dark:border-slate-700 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:bg-white/10 dark:hover:text-white"
               >
                 {t("create.cancel")}
               </button>
               <button
                 type="submit"
                 disabled={createProductMutation.isPending}
-                className="flex flex-1 items-center justify-center rounded-md bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
+                className="flex flex-1 items-center justify-center rounded-md bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50 dark:bg-gradient-to-r dark:from-indigo-500 dark:to-violet-500 dark:shadow-violet-900/35 dark:ring-1 dark:ring-violet-300/35"
               >
                 {createProductMutation.isPending ? <Loader2 size={15} className="mr-2 animate-spin" /> : null}
                 {t("create.submit")}
@@ -320,11 +325,11 @@ export function ProductCreatePage() {
           </section>
 
           <section className="grid min-h-[720px] gap-5 xl:grid-cols-[320px_minmax(0,1fr)]">
-            <div className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+            <div className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm dark:border-slate-700/80 dark:bg-[#0f1726] dark:shadow-[0_16px_48px_rgba(0,0,0,0.22)]">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-base font-semibold text-zinc-950">{t("create.templateTitle")}</h2>
-                  <p className="mt-1 text-sm text-zinc-500">{t("create.templateDescription")}</p>
+                  <h2 className="text-base font-semibold text-zinc-950 dark:text-white">{t("create.templateTitle")}</h2>
+                  <p className="mt-1 text-sm text-zinc-500 dark:text-slate-400">{t("create.templateDescription")}</p>
                 </div>
                 {templatesQuery.isLoading ? <Loader2 size={16} className="animate-spin text-zinc-400" /> : null}
               </div>
@@ -339,8 +344,8 @@ export function ProductCreatePage() {
                 {planGroups.map((group) => (
                   <div key={group.stage}>
                     <div className="mb-2 flex items-center justify-between">
-                      <h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-500">{group.label}</h3>
-                      <span className="text-[11px] text-zinc-400">{group.plans.length}</span>
+                      <h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-500 dark:text-slate-400">{group.label}</h3>
+                      <span className="text-[11px] text-zinc-400 dark:text-slate-500">{group.plans.length}</span>
                     </div>
                     <div className="space-y-2">
                       {group.plans.map((option) => {
@@ -352,20 +357,20 @@ export function ProductCreatePage() {
                             onClick={() => setCanvasTemplateKey(option.key)}
                             className={`w-full rounded-lg border p-3 text-left transition-colors ${
                               selected
-                                ? "border-blue-500 bg-blue-50/50 shadow-[0_0_0_1px_rgb(59_130_246)]"
-                                : "border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50"
+                                ? "border-blue-500 bg-blue-50/50 shadow-[0_0_0_1px_rgb(59_130_246)] dark:border-violet-400 dark:bg-violet-500/18 dark:shadow-[0_0_0_1px_rgba(167,139,250,0.65)]"
+                                : "border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50 dark:border-slate-700/80 dark:bg-[#151f33] dark:hover:border-violet-400/45 dark:hover:bg-violet-500/12"
                             }`}
                           >
                             <div className="flex min-w-0 items-start justify-between gap-3">
                               <div className="min-w-0 flex-1">
-                                <span className="block truncate text-sm font-semibold text-zinc-950">
+                                <span className="block truncate text-sm font-semibold text-zinc-950 dark:text-white">
                                   {option.label}
                                 </span>
-                                <p className="mt-1 line-clamp-2 text-xs leading-5 text-zinc-500">
+                                <p className="mt-1 line-clamp-2 text-xs leading-5 text-zinc-500 dark:text-slate-400">
                                   {option.description}
                                 </p>
                               </div>
-                              {selected ? <Check size={14} className="mt-0.5 shrink-0 text-blue-600" /> : null}
+                              {selected ? <Check size={14} className="mt-0.5 shrink-0 text-blue-600 dark:text-violet-200" /> : null}
                             </div>
                             <div className="mt-2 flex flex-wrap gap-1.5">
                               <TemplateChip>{option.shortLabel}</TemplateChip>
@@ -381,22 +386,22 @@ export function ProductCreatePage() {
               </div>
             </div>
 
-            <div className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
+            <div className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm dark:border-slate-700/80 dark:bg-[#0f1726] dark:shadow-[0_16px_48px_rgba(0,0,0,0.22)]">
               <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-2">
-                    <h2 className="text-lg font-semibold text-zinc-950">{selectedPlan.label}</h2>
-                    <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-medium text-zinc-500">
+                    <h2 className="text-lg font-semibold text-zinc-950 dark:text-white">{selectedPlan.label}</h2>
+                    <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-medium text-zinc-500 dark:border dark:border-slate-700 dark:bg-[#151f33] dark:text-slate-300">
                       {selectedPlan.badge}
                     </span>
                   </div>
-                  <p className="mt-1 max-w-2xl text-sm leading-6 text-zinc-500">{selectedPlan.description}</p>
+                  <p className="mt-1 max-w-2xl text-sm leading-6 text-zinc-500 dark:text-slate-400">{selectedPlan.description}</p>
                 </div>
-                <div className="flex items-center gap-2 text-xs text-zinc-500">
-                  <span className="rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1">
+                <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-slate-300">
+                  <span className="rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1 dark:border-slate-700 dark:bg-[#151f33]">
                     {t("create.nodeCount", { count: selectedPlan.previewNodes.length })}
                   </span>
-                  <span className="rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1">
+                  <span className="rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1 dark:border-slate-700 dark:bg-[#151f33]">
                     {t("create.edgeCount", { count: selectedPlan.previewEdges.length })}
                   </span>
                 </div>
@@ -412,7 +417,7 @@ export function ProductCreatePage() {
 
 function TemplateChip({ children }: { children: ReactNode }) {
   return (
-    <span className="rounded border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 text-[10px] font-medium text-zinc-500">
+    <span className="rounded border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 text-[10px] font-medium text-zinc-500 dark:border-slate-700 dark:bg-[#0b1220] dark:text-slate-300">
       {children}
     </span>
   );
@@ -421,13 +426,21 @@ function TemplateChip({ children }: { children: ReactNode }) {
 function WorkflowPreview({ plan }: { plan: CanvasPlanOption }) {
   const nodeById = new Map(plan.previewNodes.map((node) => [node.id, node]));
   const width = previewWidth(plan);
+  const portUsage = plan.previewEdges.reduce<PreviewPortUsage>(
+    (usage, edge) => {
+      usage.outputs.add(edge.from);
+      usage.inputs.add(edge.to);
+      return usage;
+    },
+    { inputs: new Set<string>(), outputs: new Set<string>() },
+  );
   return (
-    <div className="relative h-[560px] overflow-x-auto overflow-y-hidden rounded-md border border-zinc-100 bg-zinc-50">
+    <div className="relative h-[560px] overflow-x-auto overflow-y-hidden rounded-md border border-zinc-100 bg-zinc-50 dark:border-slate-700/80 dark:bg-[#0b1220]">
       <div
-        className="relative h-full bg-[radial-gradient(circle_at_1px_1px,rgb(212_212_216)_1px,transparent_0)] bg-[length:16px_16px]"
+        className="relative h-full bg-[radial-gradient(circle_at_1px_1px,rgb(212_212_216)_1px,transparent_0)] bg-[length:16px_16px] dark:bg-[radial-gradient(circle_at_1px_1px,rgba(148,163,184,0.2)_1px,transparent_0)]"
         style={{ width }}
       >
-        <svg className="absolute inset-0 h-full w-full" viewBox={`0 0 ${width} 560`} aria-hidden="true">
+        <svg className="pointer-events-none absolute inset-0 z-0 h-full w-full" viewBox={`0 0 ${width} 560`} aria-hidden="true">
           {plan.previewEdges.map((edge) => {
             const from = nodeById.get(edge.from);
             const to = nodeById.get(edge.to);
@@ -445,7 +458,7 @@ function WorkflowPreview({ plan }: { plan: CanvasPlanOption }) {
                 key={`${edge.from}-${edge.to}`}
                 d={`M ${startX} ${startY} C ${midX} ${startY}, ${midX} ${endY}, ${endX} ${endY}`}
                 fill="none"
-                stroke="#4f46e5"
+                className="stroke-indigo-600 dark:stroke-violet-400"
                 strokeLinecap="round"
                 strokeOpacity="0.75"
                 strokeWidth="1.8"
@@ -454,28 +467,42 @@ function WorkflowPreview({ plan }: { plan: CanvasPlanOption }) {
           })}
         </svg>
         {plan.previewNodes.map((node) => (
-          <PreviewNodeCard key={node.id} node={node} />
+          <PreviewNodeCard key={node.id} node={node} portUsage={portUsage} />
         ))}
       </div>
     </div>
   );
 }
 
-function PreviewNodeCard({ node }: { node: PreviewNode }) {
+function PreviewNodeCard({ node, portUsage }: { node: PreviewNode; portUsage: PreviewPortUsage }) {
   const { t } = useI18n();
   const width = node.width ?? PREVIEW_NODE_WIDTH;
   const status = node.tone === "copy" || node.tone === "image" ? t("create.pending") : t("create.available");
+  const showInputPort = portUsage.inputs.has(node.id);
+  const showOutputPort = portUsage.outputs.has(node.id);
   return (
     <div
-      className={`absolute rounded-lg border px-3 py-3 shadow-sm backdrop-blur ${toneClasses[node.tone ?? "input"]}`}
-      style={{ left: node.x, top: node.y, width, minHeight: NODE_HEIGHT }}
+      className={`absolute z-10 rounded-lg border px-3 py-3 shadow-sm backdrop-blur dark:shadow-slate-950/25 ${toneClasses[node.tone ?? "input"]}`}
+      style={{ left: node.x, top: node.y, width, height: NODE_HEIGHT }}
     >
+      {showInputPort ? (
+        <span
+          aria-hidden="true"
+          className="absolute left-[-5px] top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full border border-slate-300 bg-white shadow-sm dark:border-slate-500 dark:bg-[#0b1220]"
+        />
+      ) : null}
+      {showOutputPort ? (
+        <span
+          aria-hidden="true"
+          className="absolute right-[-6px] top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border-2 border-indigo-500 bg-white shadow-sm dark:border-violet-400 dark:bg-[#0b1220]"
+        />
+      ) : null}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="truncate text-sm font-semibold">{node.title}</div>
           <div className="mt-1 truncate text-xs opacity-70">{node.subtitle}</div>
         </div>
-        <span className="shrink-0 rounded-full bg-white/70 px-2 py-0.5 text-[10px] text-zinc-500">{status}</span>
+        <span className="shrink-0 rounded-full bg-white/70 px-2 py-0.5 text-[10px] text-zinc-500 dark:bg-[#0b1220]/80 dark:text-slate-300">{status}</span>
       </div>
       <div className="mt-3 flex gap-1.5">
         <span className="h-1.5 w-7 rounded-full bg-current opacity-20" />

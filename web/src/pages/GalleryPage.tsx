@@ -6,26 +6,28 @@ import { useNavigate } from "react-router-dom";
 import { TopNav } from "../components/TopNav";
 import { api } from "../lib/api";
 import { formatDateTime } from "../lib/format";
+import { useI18n } from "../lib/preferences";
 import type { GalleryEntry } from "../lib/types";
 import { galleryEntrySizeLabel, galleryTileLayout } from "./gallery/helpers";
 
-function metadataRows(entry: GalleryEntry) {
+function metadataRows(entry: GalleryEntry, locale: ReturnType<typeof useI18n>["locale"], t: ReturnType<typeof useI18n>["t"]) {
   return [
-    ["尺寸", galleryEntrySizeLabel(entry)],
-    ["模型", [entry.provider_name, entry.model_name].filter(Boolean).join(" / ") || "未知"],
-    ["会话", entry.image_session_title],
-    ["商品", entry.product_name ?? "全局"],
+    ["gallery.meta.size", galleryEntrySizeLabel(entry, locale)],
+    ["gallery.meta.model", [entry.provider_name, entry.model_name].filter(Boolean).join(" / ") || t("common.unknown")],
+    ["gallery.meta.session", entry.image_session_title],
+    ["gallery.meta.product", entry.product_name ?? t("gallery.global")],
     [
-      "候选",
+      "gallery.meta.candidate",
       entry.candidate_index != null && entry.candidate_count != null
         ? `${entry.candidate_index}/${entry.candidate_count}`
-        : "未知",
+        : t("common.unknown"),
     ],
-    ["保存时间", formatDateTime(entry.created_at)],
+    ["gallery.meta.savedAt", formatDateTime(entry.created_at)],
   ] as const;
 }
 
 export function GalleryPage() {
+  const { locale, t } = useI18n();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [previewEntry, setPreviewEntry] = useState<GalleryEntry | null>(null);
@@ -73,7 +75,7 @@ export function GalleryPage() {
 
   return (
     <div className="min-h-screen bg-[#07111d] text-slate-950">
-      <TopNav breadcrumbs="画廊" onHome={() => navigate("/products")} onLogout={() => logoutMutation.mutate()} />
+      <TopNav breadcrumbs={t("gallery.title")} onHome={() => navigate("/products")} onLogout={() => logoutMutation.mutate()} />
 
       <main className="w-full">
         {galleryQuery.isLoading ? (
@@ -82,7 +84,7 @@ export function GalleryPage() {
           </div>
         ) : galleryQuery.isError ? (
           <div className="flex min-h-[calc(100svh-80px)] items-center justify-center bg-[#f3eadc] px-6 text-sm font-medium text-red-700">
-            画廊加载失败
+            {t("gallery.loadFailed")}
           </div>
         ) : entries.length ? (
           <>
@@ -94,7 +96,7 @@ export function GalleryPage() {
                 className="absolute inset-y-0 right-0 h-full w-full object-cover object-center opacity-35 sm:opacity-50 lg:w-[62%] lg:opacity-100"
               />
               <div className="absolute inset-0 bg-[linear-gradient(90deg,#f4eddf_0%,rgba(244,237,223,0.99)_36%,rgba(244,237,223,0.72)_52%,rgba(244,237,223,0.08)_76%,rgba(244,237,223,0)_100%)]" />
-              <div className="absolute inset-x-0 bottom-0 h-px bg-slate-950/10" />
+              <div className="absolute inset-x-0 bottom-0 h-px bg-[#020617]/10" />
               <div className="absolute left-5 top-16 hidden h-64 flex-col items-center gap-4 text-[#1d4cff] sm:flex">
                 <span className="h-2 w-2 rounded-full bg-[#1d4cff]" />
                 <span className="h-28 w-px bg-[#1d4cff]/30" />
@@ -104,16 +106,18 @@ export function GalleryPage() {
 
               <div className="relative z-10 mx-auto grid min-h-[420px] max-w-7xl grid-cols-1 px-6 py-14 sm:min-h-[480px] sm:px-10 lg:min-h-[460px] lg:grid-cols-[minmax(0,0.43fr)_minmax(360px,0.57fr)] lg:items-center lg:px-14">
                 <div className="max-w-xl">
-                  <div className="mb-7 h-px w-44 bg-slate-950/22" />
-                  <h1 className="text-6xl font-black leading-none text-slate-950 sm:text-7xl lg:text-8xl">画廊</h1>
-                  <p className="mt-6 max-w-md text-base leading-7 text-slate-800">
-                    由 AI 生成的创意作品，灵感无限，想象即现实。
+                  <div className="mb-7 h-px w-44 bg-[#020617]/22" />
+                  <h1 className="text-6xl font-black leading-none text-[#020617] sm:text-7xl lg:text-8xl">
+                    {t("gallery.title")}
+                  </h1>
+                  <p className="mt-6 max-w-md text-base leading-7 text-[#1f2937]">
+                    {t("gallery.description")}
                   </p>
                   <div className="mt-7 flex max-w-xs items-center gap-3">
-                    <span className="relative h-4 w-4 rounded-full border-2 border-slate-950">
-                      <span className="absolute left-1/2 top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-slate-950" />
+                    <span className="relative h-4 w-4 rounded-full border-2 border-[#020617]">
+                      <span className="absolute left-1/2 top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#020617]" />
                     </span>
-                    <span className="h-px flex-1 bg-slate-950/18" />
+                    <span className="h-px flex-1 bg-[#020617]/18" />
                   </div>
                 </div>
 
@@ -124,10 +128,10 @@ export function GalleryPage() {
             <section className="bg-[#07111d] px-4 py-8 sm:px-6 lg:px-10">
               <div className="mx-auto mb-6 flex max-w-7xl items-end justify-between gap-4 border-b border-white/10 pb-5">
                 <div>
-                  <div className="text-xs font-bold uppercase text-indigo-300">Gallery Feed</div>
-                  <h2 className="mt-2 text-2xl font-black text-white">作品</h2>
+                  <div className="text-xs font-bold uppercase text-indigo-300">{t("gallery.feed")}</div>
+                  <h2 className="mt-2 text-2xl font-black text-white">{t("gallery.works")}</h2>
                 </div>
-                <div className="text-sm font-medium text-white/55">{entries.length} 张</div>
+                <div className="text-sm font-medium text-white/55">{t("gallery.count", { count: entries.length })}</div>
               </div>
 
               <div
@@ -162,7 +166,7 @@ export function GalleryPage() {
                             {entry.prompt ?? entry.image.original_filename}
                           </div>
                           <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] font-semibold text-white/70">
-                            <span>{galleryEntrySizeLabel(entry)}</span>
+                            <span>{galleryEntrySizeLabel(entry, locale)}</span>
                             <span>{formatDateTime(entry.created_at)}</span>
                           </div>
                         </div>
@@ -177,8 +181,8 @@ export function GalleryPage() {
         ) : (
           <div className="flex min-h-[calc(100svh-80px)] flex-col items-center justify-center bg-[#f3eadc] px-6 text-sm text-slate-600">
             <ImageIcon size={30} className="mb-4 text-indigo-500" />
-            <div className="text-5xl font-black text-slate-950">画廊</div>
-            <div className="mt-4 text-center">还没有保存到画廊的图片</div>
+            <div className="text-5xl font-black text-slate-950">{t("gallery.title")}</div>
+            <div className="mt-4 text-center">{t("gallery.empty")}</div>
           </div>
         )}
       </main>
@@ -188,7 +192,7 @@ export function GalleryPage() {
           className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/86 p-4 backdrop-blur-sm"
           role="dialog"
           aria-modal="true"
-          aria-label="画廊大图预览"
+          aria-label={t("gallery.previewLabel")}
         >
           <div className="grid max-h-[92svh] w-full max-w-6xl overflow-y-auto rounded-lg bg-white shadow-2xl lg:grid-cols-[minmax(0,1fr)_340px] lg:overflow-hidden">
             <div className="flex min-h-[280px] max-h-[45svh] items-center justify-center bg-slate-950 lg:min-h-[320px] lg:max-h-none">
@@ -202,26 +206,26 @@ export function GalleryPage() {
             <aside className="flex min-h-0 flex-col border-l border-slate-200">
               <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
                 <div>
-                  <div className="text-sm font-bold text-slate-950">原提示词</div>
+                  <div className="text-sm font-bold text-slate-950">{t("gallery.prompt")}</div>
                   <div className="mt-0.5 text-xs text-slate-500">{previewEntry.image.original_filename}</div>
                 </div>
                 <button
                   type="button"
                   onClick={() => setPreviewEntry(null)}
                   className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-950"
-                  aria-label="关闭预览"
+                  aria-label={t("gallery.closePreview")}
                 >
                   <X size={18} />
                 </button>
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
                 <p className="whitespace-pre-wrap break-words text-sm leading-6 text-slate-800">
-                  {previewEntry.prompt ?? "无 Prompt"}
+                  {previewEntry.prompt ?? t("gallery.noPrompt")}
                 </p>
                 <div className="mt-6 grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
-                  {metadataRows(previewEntry).map(([label, value]) => (
+                  {metadataRows(previewEntry, locale, t).map(([label, value]) => (
                     <div key={label} className="min-w-0">
-                      <div className="font-semibold text-slate-400">{label}</div>
+                      <div className="font-semibold text-slate-400">{t(label)}</div>
                       <div className="mt-1 truncate font-medium text-slate-800">{value}</div>
                     </div>
                   ))}
@@ -245,7 +249,7 @@ export function GalleryPage() {
                   className="inline-flex w-full items-center justify-center rounded-lg bg-slate-950 px-3 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-700"
                 >
                   <Download size={16} className="mr-2" />
-                  下载原图
+                  {t("gallery.download")}
                 </a>
               </div>
             </aside>

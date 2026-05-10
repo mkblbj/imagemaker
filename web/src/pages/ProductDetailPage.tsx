@@ -27,6 +27,7 @@ import { TopNav } from "../components/TopNav";
 import { api, ApiError } from "../lib/api";
 import { DEFAULT_IMAGE_TOOL_ALLOWED_FIELDS } from "../lib/imageToolOptions";
 import { DEFAULT_IMAGE_GENERATION_MAX_DIMENSION, buildImageSizeOptions } from "../lib/imageSizes";
+import { useI18n } from "../lib/preferences";
 import type {
   CanvasTemplateSummary,
   ProductWorkflow,
@@ -62,7 +63,7 @@ import {
   replaceSelectedNodeIdsFromBox,
   toggleSelectedNodeId,
 } from "./product-detail/selection";
-import { connectionDescription } from "./product-detail/nodeDisplay";
+import { connectionDescription, localizedWorkflowNodeTypeLabel } from "./product-detail/nodeDisplay";
 import type { NodeConfigDraft, SaveStatus } from "./product-detail/types";
 import {
   clamp,
@@ -96,6 +97,7 @@ type WorkflowCanvasMutationBridge = {
 };
 
 export function ProductDetailPage() {
+  const { t } = useI18n();
   const { productId = "" } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -448,7 +450,7 @@ export function ProductDetailPage() {
       setError(
         mutationError instanceof ApiError
           ? mutationError.detail
-          : "工作流运行失败",
+          : t("detail.error.runWorkflow"),
       );
     },
   });
@@ -465,7 +467,7 @@ export function ProductDetailPage() {
       setError(
         mutationError instanceof ApiError
           ? mutationError.detail
-          : "取消工作流失败",
+          : t("detail.error.cancelWorkflow"),
       );
     },
   });
@@ -480,7 +482,7 @@ export function ProductDetailPage() {
       setError(
         mutationError instanceof ApiError
           ? mutationError.detail
-          : "重试工作流失败",
+          : t("detail.error.retryWorkflow"),
       );
     },
   });
@@ -489,7 +491,7 @@ export function ProductDetailPage() {
     mutationFn: (type: WorkflowNodeType) => {
       const currentWorkflow = workflowQuery.data;
       if (!currentWorkflow) {
-        throw new Error("工作流尚未加载");
+        throw new Error(t("detail.error.workflowNotLoaded"));
       }
       const siblingCount = currentWorkflow.nodes.filter(
         (node) => node.node_type === type,
@@ -518,7 +520,7 @@ export function ProductDetailPage() {
       setError(
         mutationError instanceof ApiError
           ? mutationError.detail
-          : "新增节点失败",
+          : t("detail.error.createNode"),
       );
     },
   });
@@ -554,7 +556,7 @@ export function ProductDetailPage() {
       setError(
         mutationError instanceof ApiError
           ? mutationError.detail
-          : "添加模板失败",
+          : t("detail.error.applyTemplate"),
       );
     },
   });
@@ -562,11 +564,11 @@ export function ProductDetailPage() {
   const createUserTemplateGroupMutation = useMutation({
     mutationFn: async () => {
       if (selectedNodeIds.length < 2) {
-        throw new Error("请先多选要保存的节点");
+        throw new Error(t("detail.error.selectNodesToSave"));
       }
       const title = templateSaveTitle.trim();
       if (!title) {
-        throw new Error("请输入模板名称");
+        throw new Error(t("detail.error.templateNameRequired"));
       }
       await flushSelectedDraft();
       return api.createUserTemplateGroup(productId, {
@@ -590,7 +592,7 @@ export function ProductDetailPage() {
           ? mutationError.detail
           : mutationError instanceof Error
             ? mutationError.message
-            : "保存模板失败",
+            : t("detail.error.saveTemplate"),
       );
     },
   });
@@ -603,7 +605,7 @@ export function ProductDetailPage() {
       await queryClient.invalidateQueries({ queryKey: ["canvas-templates"] });
     },
     onError: (mutationError) => {
-      setError(mutationError instanceof ApiError ? mutationError.detail : "更新模板失败");
+      setError(mutationError instanceof ApiError ? mutationError.detail : t("detail.error.updateTemplate"));
     },
   });
 
@@ -614,7 +616,7 @@ export function ProductDetailPage() {
       await queryClient.invalidateQueries({ queryKey: ["canvas-templates"] });
     },
     onError: (mutationError) => {
-      setError(mutationError instanceof ApiError ? mutationError.detail : "删除模板失败");
+      setError(mutationError instanceof ApiError ? mutationError.detail : t("detail.error.deleteTemplate"));
     },
   });
 
@@ -633,7 +635,7 @@ export function ProductDetailPage() {
       setError(
         mutationError instanceof ApiError
           ? mutationError.detail
-          : "保存节点失败",
+          : t("detail.error.saveNode"),
       );
     },
   });
@@ -641,7 +643,7 @@ export function ProductDetailPage() {
   const updateNodeCopyMutation = useMutation({
     mutationFn: (node: WorkflowNode) => {
       if (!draft.copyStructuredPayload) {
-        throw new Error("缺少结构化文案");
+        throw new Error(t("detail.error.missingStructuredCopy"));
       }
       return api.updateWorkflowNodeCopy(node.id, {
         structured_payload: draft.copyStructuredPayload,
@@ -658,7 +660,7 @@ export function ProductDetailPage() {
       setError(
         mutationError instanceof ApiError
           ? mutationError.detail
-          : "保存文案失败",
+          : t("detail.error.saveCopy"),
       );
     },
   });
@@ -723,7 +725,7 @@ export function ProductDetailPage() {
       setError(
         mutationError instanceof ApiError
           ? mutationError.detail
-          : "移动节点失败",
+          : t("detail.error.moveNode"),
       );
     },
   });
@@ -734,7 +736,7 @@ export function ProductDetailPage() {
       const source = currentWorkflow?.nodes.find((node) => node.id === input.sourceNodeId);
       const target = currentWorkflow?.nodes.find((node) => node.id === input.targetNodeId);
       if (source?.node_type === "reference_image" && target?.node_type === "reference_image") {
-        throw new Error(connectionDescription(source, target));
+        throw new Error(connectionDescription(source, target, t));
       }
       const nextWorkflow = await api.createWorkflowEdge(productId, {
         source_node_id: input.sourceNodeId,
@@ -748,7 +750,7 @@ export function ProductDetailPage() {
       const source = nextWorkflow.nodes.find((node) => node.id === sourceNodeId);
       const target = nextWorkflow.nodes.find((node) => node.id === targetNodeId);
       setError("");
-      setNotice(source && target ? connectionDescription(source, target) : "");
+      setNotice(source && target ? connectionDescription(source, target, t) : "");
       queryClient.setQueryData(["product-workflow", productId], nextWorkflow);
       setSelectedNodeIds(clearSelectedNodeGroup(selectedNodeId));
     },
@@ -759,7 +761,7 @@ export function ProductDetailPage() {
           ? mutationError.detail
           : mutationError instanceof Error
             ? mutationError.message
-          : "连接节点失败",
+          : t("detail.error.connectNode"),
       );
     },
   });
@@ -776,7 +778,7 @@ export function ProductDetailPage() {
       setError(
         mutationError instanceof ApiError
           ? mutationError.detail
-          : "删除连线失败",
+          : t("detail.error.deleteEdge"),
       );
     },
   });
@@ -795,13 +797,13 @@ export function ProductDetailPage() {
       setError(
         mutationError instanceof ApiError
           ? mutationError.detail
-          : "删除节点失败",
+          : t("detail.error.deleteNode"),
       );
     },
   });
 
   const handleDeleteNode = (node: WorkflowNode) => {
-    if (!window.confirm(`确定删除节点「${node.title}」吗？关联连线也会删除。`)) {
+    if (!window.confirm(t("detail.confirm.deleteNode", { title: node.title }))) {
       return;
     }
     deleteNodeMutation.mutate(node.id);
@@ -810,14 +812,14 @@ export function ProductDetailPage() {
   const deleteSelectedNodesMutation = useMutation({
     mutationFn: async (nodeIds: string[]) => {
       if (nodeIds.length < 2) {
-        throw new Error("请先多选要删除的节点");
+        throw new Error(t("detail.error.selectNodesToDelete"));
       }
       let nextWorkflow: ProductWorkflow | null = null;
       for (const nodeId of nodeIds) {
         nextWorkflow = await api.deleteWorkflowNode(nodeId);
       }
       if (!nextWorkflow) {
-        throw new Error("删除节点失败");
+        throw new Error(t("detail.error.deleteNode"));
       }
       return nextWorkflow;
     },
@@ -835,7 +837,7 @@ export function ProductDetailPage() {
           ? mutationError.detail
           : mutationError instanceof Error
             ? mutationError.message
-            : "删除选中节点失败",
+            : t("detail.error.deleteSelectedNodes"),
       );
     },
   });
@@ -844,7 +846,7 @@ export function ProductDetailPage() {
     if (selectedNodeIds.length < 2) {
       return;
     }
-    if (!window.confirm(`确定删除选中的 ${selectedNodeIds.length} 个节点吗？关联连线也会删除。`)) {
+    if (!window.confirm(t("detail.confirm.deleteSelectedNodes", { count: selectedNodeIds.length }))) {
       return;
     }
     deleteSelectedNodesMutation.mutate([...selectedNodeIds]);
@@ -853,7 +855,7 @@ export function ProductDetailPage() {
   const uploadNodeImageMutation = useMutation({
     mutationFn: (file: File) => {
       if (!selectedNode) {
-        throw new Error("请选择图片节点");
+        throw new Error(t("detail.error.selectImageNode"));
       }
       return api.uploadWorkflowNodeImage(selectedNode.id, {
         file,
@@ -869,7 +871,7 @@ export function ProductDetailPage() {
     },
     onError: (mutationError) => {
       setError(
-        mutationError instanceof ApiError ? mutationError.detail : "上传失败",
+        mutationError instanceof ApiError ? mutationError.detail : t("detail.error.upload"),
       );
     },
   });
@@ -877,7 +879,7 @@ export function ProductDetailPage() {
   const bindNodeImageMutation = useMutation({
     mutationFn: (input: { source_asset_id?: string; poster_variant_id?: string }) => {
       if (!selectedNode || selectedNode.node_type !== "reference_image") {
-        throw new Error("请选择图片节点");
+        throw new Error(t("detail.error.selectImageNode"));
       }
       return api.bindWorkflowNodeImage(selectedNode.id, input);
     },
@@ -891,7 +893,7 @@ export function ProductDetailPage() {
       setError(
         mutationError instanceof ApiError
           ? mutationError.detail
-          : "填充失败",
+          : t("detail.error.fill"),
       );
     },
   });
@@ -1075,7 +1077,7 @@ export function ProductDetailPage() {
 
   if (productQuery.isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-white text-zinc-400">
+      <div className="flex min-h-screen items-center justify-center bg-white text-zinc-400 dark:bg-slate-950">
         <Loader2 size={24} className="animate-spin" />
       </div>
     );
@@ -1083,16 +1085,16 @@ export function ProductDetailPage() {
 
   if (productQuery.isError || !productQuery.data) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-white">
+      <div className="flex min-h-screen items-center justify-center bg-white dark:bg-slate-950">
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          商品详情加载失败，请返回列表重试。
+          {t("detail.loadFailed")}
         </div>
       </div>
     );
   }
 
   const product = productQuery.data;
-  const sourceImage = getSourceImageDownload(product);
+  const sourceImage = getSourceImageDownload(product, t);
   const latestRun = workflow?.runs[0] ?? null;
   const selectedNodeCancelableRun = getWorkflowNodeCancelableRun(workflow, selectedNode);
   const canvasSize = getCanvasSize({
@@ -1133,33 +1135,36 @@ export function ProductDetailPage() {
         onClick={() => void handleRunWorkflow(undefined)}
         disabled={fullWorkflowRunBusy || !workflow}
         className="flex w-full flex-col items-center rounded-lg bg-indigo-600 px-1 py-2 text-[10px] font-semibold text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
-        title={fullWorkflowRunBusy ? "工作流运行中" : "运行整个工作流"}
-        aria-label={fullWorkflowRunBusy ? "工作流运行中" : "运行整个工作流"}
+        title={fullWorkflowRunBusy ? t("detail.workflowRunning") : t("detail.runWorkflow")}
+        aria-label={fullWorkflowRunBusy ? t("detail.workflowRunning") : t("detail.runWorkflow")}
       >
         {fullWorkflowRunBusy ? <Loader2 size={15} className="animate-spin" /> : <Play size={15} />}
-        <span className="mt-1 leading-none">{fullWorkflowRunBusy ? "运行中" : "运行"}</span>
+        <span className="mt-1 leading-none">{fullWorkflowRunBusy ? t("detail.running") : t("detail.run")}</span>
       </button>
       <div className="my-1 h-px w-8 self-center bg-slate-700/80" />
-      {ADD_NODE_OPTIONS.map((option) => (
+      {ADD_NODE_OPTIONS.map((option) => {
+        const optionLabel = localizedWorkflowNodeTypeLabel(option.type, t);
+        return (
         <button
           key={option.type}
           type="button"
           onClick={() => createNodeMutation.mutate(option.type)}
           disabled={structureBusy || !workflow}
           className="flex w-full flex-col items-center rounded-lg border border-transparent px-1 py-2 text-[10px] font-medium text-slate-400 transition-colors hover:border-slate-700 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-          title={`添加${option.label}节点`}
-          aria-label={`添加${option.label}节点`}
+          title={t("detail.addNode", { label: optionLabel })}
+          aria-label={t("detail.addNode", { label: optionLabel })}
         >
           <Plus size={15} />
-          <span className="mt-1 leading-none">{option.label}</span>
+          <span className="mt-1 leading-none">{optionLabel}</span>
         </button>
-      ))}
+        );
+      })}
       <div className="my-1 h-px w-8 self-center bg-slate-700/80" />
     </>
   );
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-white text-sm text-zinc-900">
+    <div className="flex h-screen flex-col overflow-hidden bg-white text-sm text-zinc-900 dark:bg-slate-950">
       {!topChromeCollapsed ? <TopNav onHome={() => navigate("/products")} breadcrumbs={product.name} /> : null}
 
       <main className="flex min-h-0 flex-1 flex-col border-t border-slate-200 bg-slate-50">
@@ -1175,8 +1180,12 @@ export function ProductDetailPage() {
         ) : null}
         {showQueueOverview && queueOverview ? (
           <div className="z-20 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800">
-            当前全局生成：运行 {queueOverview.running_count} 个，排队 {queueOverview.queued_count} 个，
-            活跃 {queueOverview.active_count}/{queueOverview.max_concurrent_tasks}。
+            {t("detail.queueOverview", {
+              running: queueOverview.running_count,
+              queued: queueOverview.queued_count,
+              active: queueOverview.active_count,
+              max: queueOverview.max_concurrent_tasks,
+            })}
           </div>
         ) : null}
 
@@ -1189,8 +1198,8 @@ export function ProductDetailPage() {
                 type="button"
                 onClick={() => setTopChromeCollapsed((collapsed) => !collapsed)}
                 className="pointer-events-auto inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 bg-white/90 text-zinc-600 shadow-sm backdrop-blur transition-colors hover:bg-white hover:text-zinc-900"
-                aria-label={topChromeCollapsed ? "还原画布布局" : "最大化画布"}
-                title={topChromeCollapsed ? "还原画布布局" : "最大化画布"}
+                aria-label={topChromeCollapsed ? t("detail.restoreCanvas") : t("detail.maximizeCanvas")}
+                title={topChromeCollapsed ? t("detail.restoreCanvas") : t("detail.maximizeCanvas")}
               >
                 {topChromeCollapsed ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
               </button>
@@ -1275,8 +1284,8 @@ export function ProductDetailPage() {
                         left: (start.x + end.x) / 2,
                         top: (start.y + end.y) / 2,
                       }}
-                      title="删除连线"
-                      aria-label="删除连线"
+                      title={t("detail.deleteEdge")}
+                      aria-label={t("detail.deleteEdge")}
                     >
                       ×
                     </button>
@@ -1299,7 +1308,7 @@ export function ProductDetailPage() {
                         node={node}
                         nodeRef={(element) => setNodeElementRef(node.id, element)}
                         position={getRenderedNodePosition(node)}
-                        image={getNodeImageDownload(node, product)}
+                        image={getNodeImageDownload(node, product, t)}
                         primarySelected={node.id === selectedNode?.id}
                         secondarySelected={selectedNodeIdSet.has(node.id) && node.id !== selectedNode?.id}
                         previewSelected={previewSelectedNodeIds.includes(node.id)}
@@ -1327,7 +1336,7 @@ export function ProductDetailPage() {
                 </div>
               ) : (
                 <div className="flex h-full items-center justify-center text-xs text-zinc-500">
-                  工作流加载失败
+                  {t("detail.workflowLoadFailed")}
                 </div>
               )}
             </div>
@@ -1338,7 +1347,7 @@ export function ProductDetailPage() {
                 type="button"
                 onClick={() => updateZoom(zoom - 0.1)}
                 className="inline-flex items-center rounded px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50"
-                aria-label="缩小画布"
+                aria-label={t("detail.zoomOut")}
               >
                 <ZoomOut size={13} />
               </button>
@@ -1346,7 +1355,7 @@ export function ProductDetailPage() {
                 type="button"
                 onClick={() => updateZoom(1)}
                 className="rounded px-2 py-1 text-xs tabular-nums text-zinc-600 hover:bg-zinc-50"
-                aria-label="重置画布缩放"
+                aria-label={t("detail.resetZoom")}
               >
                 {Math.round(zoom * 100)}%
               </button>
@@ -1354,7 +1363,7 @@ export function ProductDetailPage() {
                 type="button"
                 onClick={() => updateZoom(zoom + 0.1)}
                 className="inline-flex items-center rounded px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50"
-                aria-label="放大画布"
+                aria-label={t("detail.zoomIn")}
               >
                 <ZoomIn size={13} />
               </button>
@@ -1365,7 +1374,7 @@ export function ProductDetailPage() {
                 <div className="pointer-events-auto min-w-[22rem] rounded-xl border border-indigo-200 bg-white/95 p-2.5 text-sm font-semibold text-indigo-700 shadow-lg shadow-indigo-950/10 backdrop-blur">
                   <div className="flex items-center gap-2">
                     <Check size={16} strokeWidth={2.5} />
-                    <span className="mr-auto">已选 {selectedGroupCount}</span>
+                    <span className="mr-auto">{t("detail.selectedCount", { count: selectedGroupCount })}</span>
                     <button
                       type="button"
                       onClick={() => setTemplateSaveOpen((open) => !open)}
@@ -1377,7 +1386,7 @@ export function ProductDetailPage() {
                       ) : (
                         <Save size={14} />
                       )}
-                      保存模板
+                      {t("detail.saveTemplate")}
                     </button>
                     <button
                       type="button"
@@ -1390,14 +1399,14 @@ export function ProductDetailPage() {
                       ) : (
                         <Trash2 size={14} />
                       )}
-                      删除
+                      {t("detail.delete")}
                     </button>
                     <button
                       type="button"
                       onClick={clearMultiSelection}
                       className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 shadow-sm transition-colors hover:border-red-300 hover:bg-red-100 hover:text-red-700"
-                      aria-label="清空多选"
-                      title="清空多选"
+                      aria-label={t("detail.clearSelection")}
+                      title={t("detail.clearSelection")}
                     >
                       <X size={18} strokeWidth={2.5} />
                     </button>
@@ -1414,14 +1423,14 @@ export function ProductDetailPage() {
                         value={templateSaveTitle}
                         onChange={(event) => setTemplateSaveTitle(event.target.value)}
                         className="h-9 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 focus:border-indigo-300"
-                        placeholder="模板名称"
+                        placeholder={t("detail.templateName")}
                         maxLength={255}
                       />
                       <input
                         value={templateSaveDescription}
                         onChange={(event) => setTemplateSaveDescription(event.target.value)}
                         className="h-9 rounded-lg border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 focus:border-indigo-300"
-                        placeholder="描述，可选"
+                        placeholder={t("detail.templateDescription")}
                         maxLength={1000}
                       />
                       <div className="flex justify-end gap-2">
@@ -1430,14 +1439,14 @@ export function ProductDetailPage() {
                           onClick={() => setTemplateSaveOpen(false)}
                           className="h-8 rounded-lg px-2.5 text-xs font-semibold text-zinc-500 hover:bg-zinc-50"
                         >
-                          取消
+                          {t("detail.cancel")}
                         </button>
                         <button
                           type="submit"
                           disabled={createUserTemplateGroupMutation.isPending}
                           className="inline-flex h-8 items-center rounded-lg bg-zinc-950 px-3 text-xs font-semibold text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          保存
+                          {t("detail.save")}
                         </button>
                       </div>
                     </form>
@@ -1454,8 +1463,8 @@ export function ProductDetailPage() {
                 type="button"
                 onClick={() => setSidebarCollapsed(false)}
                 className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-zinc-200 bg-white/95 text-zinc-500 opacity-0 shadow-sm transition-opacity hover:text-zinc-900 focus:opacity-100 focus:outline-none group-hover/sidebar-expand:opacity-100"
-                aria-label="展开右侧栏"
-                title="展开右侧栏"
+                aria-label={t("detail.expandSidebar")}
+                title={t("detail.expandSidebar")}
               >
                 <ChevronLeft size={14} />
               </button>
@@ -1465,10 +1474,10 @@ export function ProductDetailPage() {
               className="absolute right-4 top-16 z-30 flex w-14 flex-col items-center gap-2 rounded-2xl border border-slate-800 bg-slate-950/95 p-2 shadow-xl shadow-slate-950/20 backdrop-blur"
             >
               {renderWorkflowToolbarButtons()}
-              <SidebarTabButton active={false} label="详情" title="Details" icon={<Settings2 size={15} />} onClick={() => openSidebarTab("details")} />
-              <SidebarTabButton active={false} label="日志" title="运行日志" icon={<CircleDot size={15} />} onClick={() => openSidebarTab("runs")} />
-              <SidebarTabButton active={false} label="图片" title="Images" icon={<ImageIcon size={15} />} onClick={() => openSidebarTab("images")} />
-              <SidebarTabButton active={false} label="模板" title="模板" icon={<Layers3 size={15} />} onClick={() => openSidebarTab("templates")} />
+              <SidebarTabButton active={false} label={t("detail.tabDetails")} title={t("detail.tabDetails")} icon={<Settings2 size={15} />} onClick={() => openSidebarTab("details")} />
+              <SidebarTabButton active={false} label={t("detail.tabRuns")} title={t("detail.runsTitle")} icon={<CircleDot size={15} />} onClick={() => openSidebarTab("runs")} />
+              <SidebarTabButton active={false} label={t("detail.tabImages")} title={t("detail.tabImages")} icon={<ImageIcon size={15} />} onClick={() => openSidebarTab("images")} />
+              <SidebarTabButton active={false} label={t("detail.tabTemplates")} title={t("detail.tabTemplates")} icon={<Layers3 size={15} />} onClick={() => openSidebarTab("templates")} />
             </div>
             </>
           ) : (
@@ -1478,8 +1487,8 @@ export function ProductDetailPage() {
                 type="button"
                 onClick={() => setSidebarCollapsed(true)}
                 className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-zinc-200 bg-white/95 text-zinc-500 opacity-0 shadow-sm transition-opacity hover:text-zinc-900 focus:opacity-100 focus:outline-none group-hover/sidebar-collapse:opacity-100"
-                aria-label="折叠右侧栏"
-                title="折叠右侧栏"
+                aria-label={t("detail.collapseSidebar")}
+                title={t("detail.collapseSidebar")}
               >
                 <ChevronRight size={14} />
               </button>
@@ -1488,29 +1497,29 @@ export function ProductDetailPage() {
               {renderWorkflowToolbarButtons()}
               <SidebarTabButton
                 active={activeSidebarTab === "details"}
-                label="详情"
-                title="Details"
+                label={t("detail.tabDetails")}
+                title={t("detail.tabDetails")}
                 icon={<Settings2 size={15} />}
                 onClick={() => openSidebarTab("details")}
               />
               <SidebarTabButton
                 active={activeSidebarTab === "runs"}
-                label="日志"
-                title="运行日志"
+                label={t("detail.tabRuns")}
+                title={t("detail.runsTitle")}
                 icon={<CircleDot size={15} />}
                 onClick={() => openSidebarTab("runs")}
               />
               <SidebarTabButton
                 active={activeSidebarTab === "images"}
-                label="图片"
-                title="Images"
+                label={t("detail.tabImages")}
+                title={t("detail.tabImages")}
                 icon={<ImageIcon size={15} />}
                 onClick={() => openSidebarTab("images")}
               />
               <SidebarTabButton
                 active={activeSidebarTab === "templates"}
-                label="模板"
-                title="模板"
+                label={t("detail.tabTemplates")}
+                title={t("detail.tabTemplates")}
                 icon={<Layers3 size={15} />}
                 onClick={() => openSidebarTab("templates")}
               />
@@ -1521,7 +1530,7 @@ export function ProductDetailPage() {
             >
               <div
                 role="separator"
-                aria-label="调整右侧栏宽度"
+                aria-label={t("detail.resizeSidebar")}
                 onPointerDown={startInspectorResize}
                 className="absolute left-[-4px] top-0 h-full w-2 cursor-col-resize hover:bg-zinc-300/50"
               />
@@ -1533,12 +1542,12 @@ export function ProductDetailPage() {
                 {activeSidebarTab === "templates" ? <Layers3 size={14} className="mr-2 text-zinc-400" /> : null}
                 <span className="text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
                   {activeSidebarTab === "details"
-                    ? "详情"
+                    ? t("detail.tabDetails")
                     : activeSidebarTab === "runs"
-                      ? "日志"
+                      ? t("detail.tabRuns")
                       : activeSidebarTab === "images"
-                        ? "图片"
-                        : "模板"}
+                        ? t("detail.tabImages")
+                        : t("detail.tabTemplates")}
                 </span>
                 </div>
               </div>
@@ -1574,7 +1583,7 @@ export function ProductDetailPage() {
                     />
                   ) : (
                     <div className="text-xs text-zinc-500">
-                      选择一个画布节点后编辑配置。
+                      {t("detail.selectNodeHint")}
                     </div>
                   )
                 ) : null}
@@ -1628,7 +1637,7 @@ export function ProductDetailPage() {
                     }}
                     onArchiveUserTemplate={(template) => {
                       if (template.user_template_id) {
-                        if (!window.confirm(`确定删除模板「${template.title}」吗？`)) {
+                        if (!window.confirm(t("detail.confirm.deleteTemplate", { title: template.title }))) {
                           return;
                         }
                         archiveUserTemplateGroupMutation.mutate(template.user_template_id);

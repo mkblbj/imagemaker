@@ -5,6 +5,9 @@ import { useNavigate } from "react-router-dom";
 
 import { ImageDropZone } from "../components/ImageDropZone";
 import { api, ApiError } from "../lib/api";
+import { localizeCanvasTemplateSummary } from "../lib/canvasTemplateLocalization";
+import { useI18n } from "../lib/preferences";
+import type { TranslationKey } from "../lib/i18n";
 import type { CanvasTemplateSummary, WorkflowNodeType } from "../lib/types";
 
 interface PreviewNode {
@@ -35,40 +38,24 @@ interface CanvasPlanOption {
   previewEdges: PreviewEdge[];
 }
 
-const BLANK_CANVAS_PLAN: CanvasPlanOption = {
-  key: "",
-  label: "空白画布",
-  shortLabel: "自由编排",
-  description: "只保留商品资料入口，适合从零搭建流程。",
-  badge: "基础",
-  stage: "blank",
-  outputCount: 0,
-  referenceCount: 0,
-  previewNodes: [
-    { id: "product", title: "商品资料", subtitle: "商品信息", x: 48, y: 112, tone: "input" },
-    { id: "blank", title: "自由编排", subtitle: "添加节点", x: 368, y: 112, tone: "blank" },
-  ],
-  previewEdges: [{ from: "product", to: "blank" }],
-};
-
 const PREVIEW_MIN_WIDTH = 920;
 const PREVIEW_NODE_WIDTH = 248;
 const NODE_HEIGHT = 74;
 
-const NODE_TYPE_LABELS: Record<WorkflowNodeType, string> = {
-  product_context: "商品资料",
-  reference_image: "参考图",
-  copy_generation: "文案",
-  image_generation: "图片生成",
+const NODE_TYPE_LABEL_KEYS: Record<WorkflowNodeType, TranslationKey> = {
+  product_context: "create.productContext",
+  reference_image: "create.referenceImage",
+  copy_generation: "create.copy",
+  image_generation: "create.imageGeneration",
 };
 
-const stageLabels: Record<string, string> = {
-  blank: "空白",
-  listing: "平台首图",
-  detail: "详情说服",
-  content: "内容种草",
-  gallery: "场景图册",
-  campaign: "活动投放",
+const stageLabelKeys: Record<string, TranslationKey> = {
+  blank: "create.stage.blank",
+  listing: "create.stage.listing",
+  detail: "create.stage.detail",
+  content: "create.stage.content",
+  gallery: "create.stage.gallery",
+  campaign: "create.stage.campaign",
 };
 
 const stageOrder = ["blank", "listing", "detail", "gallery", "content", "campaign"];
@@ -97,31 +84,32 @@ function nodeTone(nodeType: WorkflowNodeType, outputNodeKeys: Set<string>, nodeK
 function nodeSubtitle(
   node: CanvasTemplateSummary["preview_nodes"][number],
   outputNodeKeys: Set<string>,
+  t: ReturnType<typeof useI18n>["t"],
 ): string {
   if (outputNodeKeys.has(node.key)) {
-    return "结果槽位";
+    return t("create.outputSlot");
   }
   if (node.node_type === "image_generation" && node.size) {
     return node.size.replace("x", " x ");
   }
-  return NODE_TYPE_LABELS[node.node_type];
+  return t(NODE_TYPE_LABEL_KEYS[node.node_type]);
 }
 
-function canvasTemplateToPlan(template: CanvasTemplateSummary): CanvasPlanOption {
+function canvasTemplateToPlan(template: CanvasTemplateSummary, t: ReturnType<typeof useI18n>["t"]): CanvasPlanOption {
   const outputNodeKeys = new Set(template.output_slots.map((slot) => slot.node_key));
   return {
     key: template.key,
     label: template.title,
     shortLabel: template.output_slots.map((slot) => slot.label).join(" / ") || template.scenario.title,
     description: template.description,
-    badge: template.scenario.title || "模板",
+    badge: template.scenario.title || t("create.template"),
     stage: template.scenario.ecommerce_stage,
     outputCount: template.output_slots.length,
     referenceCount: template.reference_input_hints.length,
     previewNodes: template.preview_nodes.map((node) => ({
       id: node.key,
       title: node.title,
-      subtitle: nodeSubtitle(node, outputNodeKeys),
+      subtitle: nodeSubtitle(node, outputNodeKeys, t),
       x: node.position_x,
       y: node.position_y,
       tone: nodeTone(node.node_type, outputNodeKeys, node.key),
@@ -153,7 +141,7 @@ function previewWidth(plan: CanvasPlanOption): number {
   );
 }
 
-function groupedPlans(plans: CanvasPlanOption[]) {
+function groupedPlans(plans: CanvasPlanOption[], t: ReturnType<typeof useI18n>["t"]) {
   const groups = new Map<string, CanvasPlanOption[]>();
   for (const plan of plans) {
     const items = groups.get(plan.stage) ?? [];
@@ -162,10 +150,11 @@ function groupedPlans(plans: CanvasPlanOption[]) {
   }
   return stageOrder
     .filter((stage) => groups.has(stage))
-    .map((stage) => ({ stage, label: stageLabels[stage] ?? stage, plans: groups.get(stage) ?? [] }));
+    .map((stage) => ({ stage, label: stageLabelKeys[stage] ? t(stageLabelKeys[stage]) : stage, plans: groups.get(stage) ?? [] }));
 }
 
 export function ProductCreatePage() {
+  const { locale, t } = useI18n();
   const navigate = useNavigate();
   const [name, setName] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -178,29 +167,45 @@ export function ProductCreatePage() {
   });
 
   const canvasPlanOptions = useMemo(() => {
+    const blankCanvasPlan: CanvasPlanOption = {
+      key: "",
+      label: t("create.blankCanvas"),
+      shortLabel: t("create.freeLayout"),
+      description: t("create.blankDescription"),
+      badge: t("create.basic"),
+      stage: "blank",
+      outputCount: 0,
+      referenceCount: 0,
+      previewNodes: [
+        { id: "product", title: t("create.productContext"), subtitle: t("create.productInfoNode"), x: 48, y: 112, tone: "input" },
+        { id: "blank", title: t("create.freeLayout"), subtitle: t("create.addNode"), x: 368, y: 112, tone: "blank" },
+      ],
+      previewEdges: [{ from: "product", to: "blank" }],
+    };
     const fullCanvasTemplates =
       templatesQuery.data?.items
         .filter((template) => template.kind === "full_canvas")
-        .map(canvasTemplateToPlan) ?? [];
-    return [BLANK_CANVAS_PLAN, ...sortPlans(fullCanvasTemplates)];
-  }, [templatesQuery.data]);
+        .map((template) => localizeCanvasTemplateSummary(template, locale))
+        .map((template) => canvasTemplateToPlan(template, t)) ?? [];
+    return [blankCanvasPlan, ...sortPlans(fullCanvasTemplates)];
+  }, [locale, t, templatesQuery.data]);
 
   const selectedPlan =
-    canvasPlanOptions.find((option) => option.key === canvasTemplateKey) ?? BLANK_CANVAS_PLAN;
+    canvasPlanOptions.find((option) => option.key === canvasTemplateKey) ?? canvasPlanOptions[0];
 
-  const planGroups = useMemo(() => groupedPlans(canvasPlanOptions), [canvasPlanOptions]);
+  const planGroups = useMemo(() => groupedPlans(canvasPlanOptions, t), [canvasPlanOptions, t]);
 
   const previewLabel = useMemo(() => {
     if (!file) {
-      return "点击或拖拽上传";
+      return t("create.uploadIdle");
     }
     return file.name;
-  }, [file]);
+  }, [file, t]);
 
   const createProductMutation = useMutation({
     mutationFn: () => {
       if (!file) {
-        throw new Error("请先上传商品图");
+        throw new Error(t("create.requiredImage"));
       }
       return api.createProduct({
         name,
@@ -216,7 +221,7 @@ export function ProductCreatePage() {
         setError(mutationError.detail);
         return;
       }
-      setError(mutationError instanceof Error ? mutationError.message : "创建商品失败");
+      setError(mutationError instanceof Error ? mutationError.message : t("create.failed"));
     },
   });
 
@@ -232,7 +237,7 @@ export function ProductCreatePage() {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-100 px-4 py-4 text-zinc-900 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-zinc-100 px-4 py-4 text-zinc-900 dark:bg-slate-950 sm:px-6 lg:px-8">
       <main className="mx-auto max-w-[1480px]">
         <div className="mb-5 flex items-start justify-between gap-4 border-b border-zinc-200 pb-4">
           <div className="flex items-center gap-3">
@@ -240,14 +245,14 @@ export function ProductCreatePage() {
               <Tag size={21} />
             </div>
             <div>
-              <h1 className="text-xl font-semibold text-zinc-950">新建商品</h1>
-              <p className="mt-1 text-sm text-zinc-500">上传商品图，选择一套可编辑的出图画布</p>
+              <h1 className="text-xl font-semibold text-zinc-950">{t("create.title")}</h1>
+              <p className="mt-1 text-sm text-zinc-500">{t("create.description")}</p>
             </div>
           </div>
           <button
             type="button"
             onClick={() => navigate("/products")}
-            aria-label="关闭"
+            aria-label={t("create.close")}
             className="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-200/70 text-zinc-500 transition-colors hover:bg-zinc-300 hover:text-zinc-900"
           >
             <X size={18} />
@@ -256,22 +261,22 @@ export function ProductCreatePage() {
 
         <form onSubmit={handleSubmit} className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
           <section className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
-            <h2 className="text-base font-semibold text-zinc-950">商品信息</h2>
+            <h2 className="text-base font-semibold text-zinc-950">{t("create.productInfo")}</h2>
 
             <div className="mt-5">
               <label className="mb-2 block text-sm font-medium text-zinc-700">
-                商品主图 <span className="text-red-500">*</span>
+                {t("create.mainImage")} <span className="text-red-500">*</span>
               </label>
               <ImageDropZone
-                ariaLabel="上传商品主图"
+                ariaLabel={t("create.uploadAria")}
                 className="flex aspect-[1.55] cursor-pointer flex-col items-center justify-center rounded-md border border-dashed border-zinc-300 bg-zinc-50/40 p-7 text-zinc-500 transition-colors hover:border-blue-300 hover:bg-blue-50/40"
                 onFiles={handleImageFiles}
               >
                 {({ isDragging }) => (
                   <>
                     <ImagePlus size={34} className="mb-3 text-zinc-400" />
-                    <p className="text-sm font-medium text-zinc-700">{isDragging ? "松开以上传图片" : previewLabel}</p>
-                    <p className="mt-2 text-xs text-zinc-500">支持 JPG / PNG / WebP，最大 5MB</p>
+                    <p className="text-sm font-medium text-zinc-700">{isDragging ? t("create.uploadDrop") : previewLabel}</p>
+                    <p className="mt-2 text-xs text-zinc-500">{t("create.uploadHint")}</p>
                   </>
                 )}
               </ImageDropZone>
@@ -279,7 +284,7 @@ export function ProductCreatePage() {
 
             <div className="mt-6">
               <label className="mb-2 block text-sm font-medium text-zinc-700">
-                商品名称 <span className="text-red-500">*</span>
+                {t("create.productName")} <span className="text-red-500">*</span>
               </label>
               <input
                 required
@@ -288,7 +293,7 @@ export function ProductCreatePage() {
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 className="w-full rounded-md border border-zinc-200 bg-white px-3 py-2.5 text-sm transition-shadow placeholder:text-zinc-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                placeholder="例如：春季新款复古碎花连衣裙"
+                placeholder={t("create.namePlaceholder")}
               />
               <div className="mt-1 text-right text-xs text-zinc-400">{name.length} / 60</div>
             </div>
@@ -301,7 +306,7 @@ export function ProductCreatePage() {
                 onClick={() => navigate("/products")}
                 className="flex-1 rounded-md border border-zinc-200 px-4 py-2.5 text-sm font-medium text-zinc-700 transition-colors hover:border-zinc-300 hover:bg-zinc-50"
               >
-                取消
+                {t("create.cancel")}
               </button>
               <button
                 type="submit"
@@ -309,7 +314,7 @@ export function ProductCreatePage() {
                 className="flex flex-1 items-center justify-center rounded-md bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
               >
                 {createProductMutation.isPending ? <Loader2 size={15} className="mr-2 animate-spin" /> : null}
-                创建并继续
+                {t("create.submit")}
               </button>
             </div>
           </section>
@@ -318,15 +323,15 @@ export function ProductCreatePage() {
             <div className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-base font-semibold text-zinc-950">选择模板</h2>
-                  <p className="mt-1 text-sm text-zinc-500">按实际出图目标选择</p>
+                  <h2 className="text-base font-semibold text-zinc-950">{t("create.templateTitle")}</h2>
+                  <p className="mt-1 text-sm text-zinc-500">{t("create.templateDescription")}</p>
                 </div>
                 {templatesQuery.isLoading ? <Loader2 size={16} className="animate-spin text-zinc-400" /> : null}
               </div>
 
               {templatesQuery.isError ? (
                 <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                  模板加载失败，仍可创建空白画布
+                  {t("create.templateLoadFailed")}
                 </div>
               ) : null}
 
@@ -364,8 +369,8 @@ export function ProductCreatePage() {
                             </div>
                             <div className="mt-2 flex flex-wrap gap-1.5">
                               <TemplateChip>{option.shortLabel}</TemplateChip>
-                              {option.outputCount ? <TemplateChip>{option.outputCount} 输出</TemplateChip> : null}
-                              {option.referenceCount ? <TemplateChip>{option.referenceCount} 参考</TemplateChip> : null}
+                              {option.outputCount ? <TemplateChip>{t("create.outputCount", { count: option.outputCount })}</TemplateChip> : null}
+                              {option.referenceCount ? <TemplateChip>{t("create.referenceCount", { count: option.referenceCount })}</TemplateChip> : null}
                             </div>
                           </button>
                         );
@@ -389,10 +394,10 @@ export function ProductCreatePage() {
                 </div>
                 <div className="flex items-center gap-2 text-xs text-zinc-500">
                   <span className="rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1">
-                    {selectedPlan.previewNodes.length} 节点
+                    {t("create.nodeCount", { count: selectedPlan.previewNodes.length })}
                   </span>
                   <span className="rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1">
-                    {selectedPlan.previewEdges.length} 连线
+                    {t("create.edgeCount", { count: selectedPlan.previewEdges.length })}
                   </span>
                 </div>
               </div>
@@ -457,8 +462,9 @@ function WorkflowPreview({ plan }: { plan: CanvasPlanOption }) {
 }
 
 function PreviewNodeCard({ node }: { node: PreviewNode }) {
+  const { t } = useI18n();
   const width = node.width ?? PREVIEW_NODE_WIDTH;
-  const status = node.tone === "copy" || node.tone === "image" ? "待运行" : "可用";
+  const status = node.tone === "copy" || node.tone === "image" ? t("create.pending") : t("create.available");
   return (
     <div
       className={`absolute rounded-lg border px-3 py-3 shadow-sm backdrop-blur ${toneClasses[node.tone ?? "input"]}`}

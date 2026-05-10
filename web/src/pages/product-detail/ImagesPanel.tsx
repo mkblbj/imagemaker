@@ -1,4 +1,5 @@
 import type { DownloadableImage } from "../../lib/image-downloads";
+import { useI18n } from "../../lib/preferences";
 import type { PosterVariant, ProductDetail, SourceAsset, WorkflowNode } from "../../lib/types";
 
 import { PosterThumb, SourceAssetThumb } from "./ImageDownloadComponents";
@@ -29,18 +30,19 @@ export function ImagesPanel({
   onFillFromPoster,
   fillReferenceBusy,
 }: ImagesPanelProps) {
+  const { t } = useI18n();
   const canFillReference = Boolean(selectedReferenceNode);
-  const selectedReferenceLabel = selectedReferenceNode ? workflowNodeDisplayTitle(selectedReferenceNode) : "";
+  const selectedReferenceLabel = selectedReferenceNode ? workflowNodeDisplayTitle(selectedReferenceNode, t) : "";
   return (
     <section>
       <div className="mb-3 space-y-1 text-xs text-zinc-500">
-        <div>{artifactCount ? `可下载 ${artifactCount} 张` : "等待生成素材"}</div>
+        <div>{artifactCount ? t("detail.downloadableCount", { count: artifactCount }) : t("detail.waitingAssets")}</div>
         {canFillReference ? (
           <div className="text-blue-600">
-            填入：{selectedReferenceLabel}
+            {t("detail.fillInto", { label: selectedReferenceLabel })}
           </div>
         ) : (
-          <div>先选图片节点。</div>
+          <div>{t("detail.selectImageNodeFirst")}</div>
         )}
       </div>
       {artifactCount ? (
@@ -87,7 +89,7 @@ export function ImagesPanel({
         </div>
       ) : (
         <div className="flex min-h-[160px] items-center justify-center rounded-xl border border-dashed border-zinc-200 bg-zinc-50/60 px-3 py-6 text-center text-xs leading-relaxed text-zinc-500">
-          暂无图片
+          {t("detail.noImages")}
         </div>
       )}
     </section>

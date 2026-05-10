@@ -1,6 +1,7 @@
 import { X } from "lucide-react";
 
 import type { DownloadableImage } from "../../lib/image-downloads";
+import { useI18n } from "../../lib/preferences";
 import { IMAGE_PREVIEW_SURFACE_CLASS_NAME } from "./constants";
 import { DownloadLink } from "./ImageDownloadComponents";
 
@@ -10,6 +11,8 @@ interface ImagePreviewModalProps {
 }
 
 export function ImagePreviewModal({ image, onClose }: ImagePreviewModalProps) {
+  const { t } = useI18n();
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/70 p-6"
@@ -32,7 +35,7 @@ export function ImagePreviewModal({ image, onClose }: ImagePreviewModalProps) {
               type="button"
               onClick={onClose}
               className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-zinc-200 text-zinc-500 hover:bg-zinc-50 hover:text-zinc-800"
-              aria-label="关闭预览"
+              aria-label={t("detail.preview.close")}
             >
               <X size={16} />
             </button>

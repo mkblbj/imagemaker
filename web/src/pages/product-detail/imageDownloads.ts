@@ -1,3 +1,4 @@
+import { DEFAULT_LOCALE, translate, type TranslationKey, type TranslationParams } from "../../lib/i18n";
 import type { PosterVariant, ProductDetail, SourceAsset, WorkflowNode } from "../../lib/types";
 import type { DownloadableImage } from "../../lib/image-downloads";
 import {
@@ -9,6 +10,10 @@ import {
 } from "../../lib/image-downloads";
 import { workflowNodeDisplayTitle } from "./nodeDisplay";
 import { outputStringArray } from "./utils";
+
+type TranslateFunction = (key: TranslationKey, params?: TranslationParams) => string;
+
+const defaultT: TranslateFunction = (key, params) => translate(DEFAULT_LOCALE, key, params);
 
 export function getSourceImageAsset(product: ProductDetail): SourceAsset | null {
   return (
@@ -22,9 +27,10 @@ export function buildSourceImageDownload(
   asset: SourceAsset,
   label: string,
   previewUrl?: string,
+  t: TranslateFunction = defaultT,
 ): DownloadableImage {
-  const productName = sanitizeFilenamePart(product.name, "商品");
-  const imageLabel = sanitizeFilenamePart(label, "图片");
+  const productName = sanitizeFilenamePart(product.name, t("chat.productFallback"));
+  const imageLabel = sanitizeFilenamePart(label, t("detail.referenceImage"));
   const extension = getExtensionFromFilename(
     asset.original_filename,
     asset.mime_type,
@@ -41,9 +47,10 @@ export function buildPosterDownload(
   productName: string,
   poster: PosterVariant,
   previewUrl?: string,
+  t: TranslateFunction = defaultT,
 ): DownloadableImage {
-  const productLabel = sanitizeFilenamePart(productName, "商品");
-  const posterLabel = poster.kind === "main_image" ? "主图" : "海报";
+  const productLabel = sanitizeFilenamePart(productName, t("chat.productFallback"));
+  const posterLabel = poster.kind === "main_image" ? t("detail.mainImage") : t("detail.promoImage");
   const extension = getExtensionFromMime(poster.mime_type);
   return {
     previewUrl: toImageUrl(previewUrl, poster.preview_url, poster.download_url),
@@ -55,19 +62,21 @@ export function buildPosterDownload(
 
 export function getSourceImageDownload(
   product: ProductDetail,
+  t: TranslateFunction = defaultT,
 ): DownloadableImage | null {
   const sourceAsset = getSourceImageAsset(product);
   return sourceAsset
-    ? buildSourceImageDownload(product, sourceAsset, "主图")
+    ? buildSourceImageDownload(product, sourceAsset, t("detail.mainImage"), undefined, t)
     : null;
 }
 
 export function getNodeImageDownload(
   node: WorkflowNode,
   product: ProductDetail,
+  t: TranslateFunction = defaultT,
 ): DownloadableImage | null {
   if (node.node_type === "product_context") {
-    return getSourceImageDownload(product);
+    return getSourceImageDownload(product, t);
   }
   if (node.node_type === "reference_image") {
     const ids = outputStringArray(node, "source_asset_ids");
@@ -77,7 +86,7 @@ export function getNodeImageDownload(
       )
       .find((item): item is SourceAsset => Boolean(item));
     return asset
-      ? buildSourceImageDownload(product, asset, workflowNodeDisplayTitle(node))
+      ? buildSourceImageDownload(product, asset, workflowNodeDisplayTitle(node, t), undefined, t)
       : null;
   }
   return null;

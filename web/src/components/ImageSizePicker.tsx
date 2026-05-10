@@ -9,6 +9,7 @@ import {
   parseImageSizeValue,
   resolveImageSize,
 } from "../lib/imageSizes";
+import { useI18n } from "../lib/preferences";
 
 interface ImageSizePickerProps {
   value: string;
@@ -47,6 +48,7 @@ function frameClassName(aspect: string): string {
 }
 
 export function ImageSizePicker({ value, presets, onChange, disabled = false, maxDimension }: ImageSizePickerProps) {
+  const { locale, t } = useI18n();
   const optionValues = useMemo(() => new Set(presets.map((option) => option.value)), [presets]);
   const normalizedValue = normalizeImageSizeValue(value, maxDimension);
   const selectedPreset = normalizedValue !== null && optionValues.has(normalizedValue);
@@ -71,7 +73,7 @@ export function ImageSizePicker({ value, presets, onChange, disabled = false, ma
       <div className="grid grid-cols-3 gap-2">
         {presets.map((option) => {
           const active = selectedPreset && option.value === normalizedValue;
-          const display = getImageSizePresetDisplay(option);
+          const display = getImageSizePresetDisplay(option, locale);
           return (
             <button
               key={option.value}
@@ -100,14 +102,16 @@ export function ImageSizePicker({ value, presets, onChange, disabled = false, ma
       </div>
       <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
         <div className="mb-2 flex items-center justify-between gap-2">
-          <div className="text-xs font-semibold text-slate-700">自定义宽高</div>
+          <div className="text-xs font-semibold text-slate-700">{t("imageSize.custom")}</div>
           <div className="shrink-0 text-[11px] font-medium text-slate-400">
-            当前 {normalizedValue ? formatImageSizeValue(normalizedValue) : "未设置"}
+            {t("imageSize.current", { size: normalizedValue ? formatImageSizeValue(normalizedValue) : t("imageSize.unset") })}
           </div>
         </div>
         <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-2">
           <label className="block min-w-0">
-            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-slate-400">宽</span>
+            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-slate-400">
+              {t("imageSize.width")}
+            </span>
             <input
               value={width}
               inputMode="numeric"
@@ -120,7 +124,9 @@ export function ImageSizePicker({ value, presets, onChange, disabled = false, ma
           </label>
           <span className="pb-2 text-xs text-slate-400">×</span>
           <label className="block min-w-0">
-            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-slate-400">高</span>
+            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-widest text-slate-400">
+              {t("imageSize.height")}
+            </span>
             <input
               value={height}
               inputMode="numeric"
@@ -135,13 +141,13 @@ export function ImageSizePicker({ value, presets, onChange, disabled = false, ma
         <div className="mt-2 text-[11px] leading-5 text-slate-500">
           {customResolution ? (
             <>
-              最终输出：{formatImageSizeValue(customResolution.value)}
+              {t("imageSize.output", { size: formatImageSizeValue(customResolution.value) })}
               {customResolution.calibrated
-                ? `（已按单边 ${IMAGE_GENERATION_MIN_DIMENSION}-${maxDimension ?? 3840} 安全边界自动校准）`
+                ? t("imageSize.calibrated", { min: IMAGE_GENERATION_MIN_DIMENSION, max: maxDimension ?? 3840 })
                 : ""}
             </>
           ) : (
-            "请输入正整数宽高；后端仍会做最终校验。"
+            t("imageSize.invalid")
           )}
         </div>
       </div>

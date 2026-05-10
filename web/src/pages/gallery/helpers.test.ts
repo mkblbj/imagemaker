@@ -54,8 +54,10 @@ function entry(overrides: Partial<GalleryEntry>): GalleryEntry {
 describe("gallery helpers", () => {
   it("formats requested and actual size metadata", () => {
     expect(galleryEntrySizeLabel(entry({}))).toBe("实际 1024x1024 · 请求 2048x2048");
+    expect(galleryEntrySizeLabel(entry({}), "en-US")).toBe("Actual 1024x1024 · Requested 2048x2048");
     expect(galleryEntrySizeLabel(entry({ size: "1024x1024", actual_size: "1024x1024" }))).toBe("1024x1024");
     expect(galleryEntrySizeLabel(entry({ size: null, actual_size: null }))).toBe("尺寸未知");
+    expect(galleryEntrySizeLabel(entry({ size: null, actual_size: null }), "en-US")).toBe("Unknown size");
   });
 
   it("keeps a selected entry when present and falls back to the newest list item", () => {

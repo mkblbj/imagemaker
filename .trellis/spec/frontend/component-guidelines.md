@@ -67,8 +67,63 @@ Styling is Tailwind-first:
   `CONFIG` in `StatusPill.tsx`.
 - Icons come from `lucide-react` and are imported directly by each page/component.
 
-Current visual language uses white/zinc surfaces, thin borders, small rounded corners, and restrained hover/focus states.
-Existing examples include `ProductListPage.tsx`, `ProductCreatePage.tsx`, and `SettingsPage.tsx`.
+Current visual language uses zinc/slate surfaces, thin borders, small rounded corners, and restrained hover/focus states.
+Every new visible surface should include dark-mode variants when it uses explicit light backgrounds, borders, shadows, or
+text colors. The app uses a root `dark` class from `PreferencesProvider`, so Tailwind `dark:*` utilities are the normal
+path for component-level theme variants. Existing examples include `TopNav.tsx`, `ProductListPage.tsx`,
+`ProductCreatePage.tsx`, and `SettingsPage.tsx`.
+
+When adding image preview or canvas surfaces, keep images inspectable in both themes. Dark variants should change chrome
+and empty/loading/error states, not tint or obscure product thumbnails.
+
+---
+
+## Internationalized UI Text
+
+User-visible UI chrome should use the local i18n helpers instead of hard-coded one-off strings:
+
+- Translation keys live in `web/src/lib/i18n.ts`; supported locales are `zh-CN` and `en-US`.
+- Components read translations through `useI18n()` / `usePreferences()` from `web/src/lib/preferences.tsx`.
+- Pure helpers that format visible labels should accept an optional translate function or locale rather than importing
+  React hooks. Examples include image-size labels, gallery size labels, and ProductDetail node display helpers.
+- Keep product/operator/model-authored data as source text. Do not translate product names, custom node titles, user
+  template titles/descriptions returned by the backend, prompts, generated copy, filenames, provider messages, or
+  `ApiError.detail`.
+- Backend-owned built-in canvas template catalog text is system UI chrome. Localize it in frontend helpers by stable
+  built-in template key and node/output/reference identifiers, while leaving user templates and user-renamed node titles
+  as source text.
+- Built-in template metadata may identify a node's original system template, but it must not override a user-renamed
+  title. Only translate a persisted built-in node title when the stored title still matches the source built-in label or
+  an already-localized system label.
+- Default system labels should be locale-aware. If a helper suppresses legacy default titles, it must recognize defaults
+  from both supported locales so older records such as `参考图 2` do not leak into the English UI.
+
+Good:
+
+```tsx
+const { t } = useI18n();
+return <button type="button" aria-label={t("nav.logout")}>{t("nav.logout")}</button>;
+```
+
+Good:
+
+```ts
+export function workflowNodeDisplayTitle(node: WorkflowNode, t = defaultT): string {
+  return isSystemDefaultTitle(node.title) ? t("detail.node.referenceImage") : node.title;
+}
+```
+
+Bad:
+
+```tsx
+return <button type="button">退出登录</button>;
+```
+
+Bad:
+
+```tsx
+return locale === "en-US" ? translateProductName(product.name) : product.name;
+```
 
 ---
 
@@ -201,6 +256,8 @@ Pages provide data and mutations; the shared picker owns only presentational siz
   in a separate header unless that page needs an additional hero call-to-action.
 - `TopNav` may use React Router primitives such as `NavLink` / `useLocation`, but must not fetch session or settings data
   directly. Session logout remains a page-owned mutation passed in through `onLogout`.
+- `TopNav` owns the compact global locale and theme controls. Do not add separate per-page language/theme toggles unless a
+  page-specific workflow requires an additional local affordance.
 
 Wrong:
 

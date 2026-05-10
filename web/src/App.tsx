@@ -4,6 +4,7 @@ import { Loader2 } from "lucide-react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
 import { api } from "./lib/api";
+import { PreferencesProvider, useI18n } from "./lib/preferences";
 import { GalleryPage } from "./pages/GalleryPage";
 import { HelpPage } from "./pages/HelpPage";
 import { LoginPage } from "./pages/LoginPage";
@@ -14,6 +15,7 @@ import { ProductListPage } from "./pages/ProductListPage";
 import { SettingsPage } from "./pages/SettingsPage";
 
 function AppRoutes() {
+  const { t } = useI18n();
   const sessionQuery = useQuery({
     queryKey: ["session"],
     queryFn: api.getSessionState,
@@ -22,8 +24,9 @@ function AppRoutes() {
 
   if (sessionQuery.isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-white text-zinc-400">
+      <div className="flex min-h-screen items-center justify-center bg-white text-zinc-400 dark:bg-slate-950 dark:text-slate-500">
         <Loader2 size={24} className="animate-spin" />
+        <span className="sr-only">{t("app.loading")}</span>
       </div>
     );
   }
@@ -85,11 +88,13 @@ export function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <div className="min-h-screen bg-white font-sans text-zinc-900 selection:bg-zinc-200">
-          <AppRoutes />
-        </div>
-      </BrowserRouter>
+      <PreferencesProvider>
+        <BrowserRouter>
+          <div className="min-h-screen bg-white font-sans text-zinc-900 selection:bg-zinc-200 dark:bg-slate-950 dark:text-slate-100 dark:selection:bg-indigo-500/30">
+            <AppRoutes />
+          </div>
+        </BrowserRouter>
+      </PreferencesProvider>
     </QueryClientProvider>
   );
 }

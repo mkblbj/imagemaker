@@ -26,6 +26,7 @@ from productflow_backend.application.contracts import (
     ProductInput,
 )
 from productflow_backend.application.product_workflow_dependencies import WorkflowExecutionDependencies
+from productflow_backend.application.product_workflow.templates import TEMPLATE_METADATA_CONFIG_KEY
 from productflow_backend.domain.enums import (
     CopyStatus,
     PosterKind,
@@ -43,6 +44,17 @@ from productflow_backend.infrastructure.db.session import get_session_factory
 
 _WORKFLOW_NODE_VISUAL_WIDTH = 248
 _WORKFLOW_NODE_VISUAL_HEIGHT = 248
+
+
+def _template_config(template_key: str, node_key: str, config_json: dict) -> dict:
+    return {
+        **config_json,
+        TEMPLATE_METADATA_CONFIG_KEY: {
+            "source": "builtin",
+            "template_key": template_key,
+            "node_key": node_key,
+        },
+    }
 _WORKFLOW_TEMPLATE_CONTEXT_ANCHOR_GAP = 220
 REMOVED_COPY_OUTPUT_KEYS = [
     "derived" + "_fields",
@@ -469,7 +481,7 @@ def test_apply_builtin_scenario_template_appends_real_workflow_nodes_and_edges(
                 and node["title"] == template_node.title
                 and node["position_x"] == template_node.position_x - min_x + expected_min_x
                 and node["position_y"] == template_node.position_y - min_y + expected_min_y
-                and node["config_json"] == template_node.config_json
+                and node["config_json"] == _template_config(template.key, template_node.key, template_node.config_json)
             ),
             None,
         )
@@ -558,7 +570,7 @@ def test_apply_full_canvas_template_reuses_existing_product_context_node(
                 and node["title"] == template_node.title
                 and node["position_x"] == template_node.position_x - min_x + min_created_x
                 and node["position_y"] == template_node.position_y - min_y + min_created_y
-                and node["config_json"] == template_node.config_json
+                and node["config_json"] == _template_config(template.key, template_node.key, template_node.config_json)
             ),
             None,
         )
@@ -1133,6 +1145,11 @@ def test_user_template_group_sanitizes_artifact_config_and_rejects_product_conte
             "config_json": {
                 "role": "reference",
                 "label": "保留标签",
+                "_canvas_template": {
+                    "source": "builtin",
+                    "template_key": "ecommerce-main-image-v1",
+                    "node_key": "output",
+                },
                 "source_asset_ids": ["asset-1"],
                 "source_poster_variant_id": "poster-1",
             }

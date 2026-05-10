@@ -1,5 +1,7 @@
 import { X } from "lucide-react";
 
+import { useI18n } from "../lib/preferences";
+
 export interface PromptPreview {
   title: string;
   text: string;
@@ -12,6 +14,7 @@ interface PromptPreviewDialogProps {
 }
 
 export function PromptPreviewDialog({ preview, onClose }: PromptPreviewDialogProps) {
+  const { t } = useI18n();
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-4 backdrop-blur-sm">
       <div className="max-h-[82vh] w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-950/20">
@@ -24,7 +27,7 @@ export function PromptPreviewDialog({ preview, onClose }: PromptPreviewDialogPro
             type="button"
             onClick={onClose}
             className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
-            aria-label="关闭 Prompt 预览"
+            aria-label={t("promptPreview.close")}
           >
             <X size={16} />
           </button>

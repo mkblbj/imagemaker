@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import { useI18n } from "../lib/preferences";
+
 export type ImageGenerationSettingsTab = "basic" | "advanced";
 
 interface ImageGenerationSettingsTabsProps {
@@ -17,9 +19,10 @@ export function ImageGenerationSettingsTabs({
   advanced,
   className = "",
 }: ImageGenerationSettingsTabsProps) {
+  const { t } = useI18n();
   const tabs: readonly [ImageGenerationSettingsTab, string][] = [
-    ["basic", "生成设置"],
-    ["advanced", "高级"],
+    ["basic", t("imageSettings.tabs.basic")],
+    ["advanced", t("imageSettings.tabs.advanced")],
   ];
 
   return (

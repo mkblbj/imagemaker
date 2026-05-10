@@ -11,6 +11,7 @@ import {
 
 import { formatDateTime } from "../../lib/format";
 import type { DownloadableImage } from "../../lib/image-downloads";
+import { useI18n } from "../../lib/preferences";
 import type { WorkflowNode } from "../../lib/types";
 import { DownloadLink } from "./ImageDownloadComponents";
 import {
@@ -71,6 +72,7 @@ export function WorkflowNodeCard({
   busy,
   runActionState,
 }: WorkflowNodeCardProps) {
+  const { t } = useI18n();
   const icon = {
     product_context: FileText,
     reference_image: ImagePlus,
@@ -78,10 +80,10 @@ export function WorkflowNodeCard({
     image_generation: ImageIcon,
   }[node.node_type];
   const Icon = icon;
-  const displayTitle = workflowNodeDisplayTitle(node);
-  const displayLabel = workflowNodeDisplayLabel(node);
+  const displayTitle = workflowNodeDisplayTitle(node, t);
+  const displayLabel = workflowNodeDisplayLabel(node, t);
   const imageWaiting = isImageWorkflowNodeWaiting(node);
-  const waitingLabel = imageWorkflowNodeWaitingLabel(node);
+  const waitingLabel = imageWorkflowNodeWaitingLabel(node, t);
   const selectedClassName = primarySelected
     ? "border-indigo-300 shadow-lg shadow-indigo-950/10 ring-2 ring-indigo-200/70"
     : secondarySelected || previewSelected
@@ -123,8 +125,8 @@ export function WorkflowNodeCard({
         data-workflow-target-node-id={node.id}
         onClick={onSelect}
         className="absolute left-[-9px] top-[47px] z-20 h-[18px] w-[18px] rounded-full border border-slate-300 bg-white shadow-sm hover:border-indigo-400 hover:ring-4 hover:ring-indigo-100"
-        title="输入 handle"
-        aria-label={`${displayTitle} 输入 handle`}
+        title={t("detail.inputHandle")}
+        aria-label={`${displayTitle} ${t("detail.inputHandle")}`}
       />
       <button
         type="button"
@@ -134,8 +136,8 @@ export function WorkflowNodeCard({
         onPointerUp={onEndConnection}
         onPointerCancel={onEndConnection}
         className="absolute right-[-10px] top-[46px] z-20 h-5 w-5 rounded-full border-2 border-indigo-500 bg-white shadow-sm hover:bg-indigo-50 hover:ring-4 hover:ring-indigo-100"
-        title="拖拽连接输出"
-        aria-label={`${displayTitle} 输出 handle`}
+        title={t("detail.dragOutput")}
+        aria-label={`${displayTitle} ${t("detail.outputHandle")}`}
       />
       <div onClick={onSelect} className="cursor-grab active:cursor-grabbing">
         <div className="mb-3 flex items-start justify-between gap-2">
@@ -155,7 +157,7 @@ export function WorkflowNodeCard({
           <span
             className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium ${statusClass(node.status)}`}
           >
-            {workflowNodeStatusLabel(node)}
+            {workflowNodeStatusLabel(node, t)}
           </span>
         </div>
         {image ? (
@@ -185,13 +187,13 @@ export function WorkflowNodeCard({
           <div className="rounded-lg border border-red-100 bg-red-50 px-2.5 py-1.5 text-xs leading-relaxed text-red-700">
             <div className="line-clamp-2">{node.failure_reason}</div>
             {!runActionState.disabled ? (
-              <div className="mt-1 text-[10px] font-medium text-red-600">可重试</div>
+              <div className="mt-1 text-[10px] font-medium text-red-600">{t("detail.retryable")}</div>
             ) : null}
           </div>
         ) : null}
       </div>
       <div className="mt-3 flex items-center justify-between text-[10px] text-zinc-400">
-        <span>{node.last_run_at ? `最近 ${formatDateTime(node.last_run_at)}` : displayLabel}</span>
+        <span>{node.last_run_at ? t("detail.recent", { time: formatDateTime(node.last_run_at) }) : displayLabel}</span>
         {node.node_type !== "product_context" ? (
           <div className="flex items-center gap-1.5">
             <button
@@ -201,7 +203,7 @@ export function WorkflowNodeCard({
               disabled={busy}
               className="inline-flex items-center rounded border border-zinc-200 px-2 py-1 text-[11px] font-medium text-red-500 hover:border-red-300 hover:bg-red-50 disabled:opacity-50"
             >
-              <Trash2 size={11} className="mr-1" /> 删除
+              <Trash2 size={11} className="mr-1" /> {t("detail.delete")}
             </button>
             <button
               type="button"

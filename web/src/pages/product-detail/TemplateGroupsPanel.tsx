@@ -12,8 +12,11 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { localizeCanvasTemplateSummary } from "../../lib/canvasTemplateLocalization";
+import type { TranslationKey } from "../../lib/i18n";
+import { useI18n } from "../../lib/preferences";
 import type { CanvasTemplateSummary } from "../../lib/types";
-import { NODE_LABELS } from "./constants";
+import { localizedWorkflowNodeTypeLabel } from "./nodeDisplay";
 
 const PREVIEW_VIEWBOX_WIDTH = 420;
 const PREVIEW_VIEWBOX_HEIGHT = 214;
@@ -23,16 +26,17 @@ const PREVIEW_NODE_WIDTH = 76;
 const PREVIEW_NODE_HEIGHT = 50;
 
 const TEMPLATE_CATEGORY_ORDER = [
-  { key: "all", label: "全部" },
-  { key: "listing", label: "平台首图" },
-  { key: "detail", label: "详情说服" },
-  { key: "gallery", label: "场景图册" },
-  { key: "content", label: "内容种草" },
-  { key: "campaign", label: "活动投放" },
-  { key: "custom", label: "自定义" },
+  { key: "all", labelKey: "detail.template.all" },
+  { key: "listing", labelKey: "detail.template.listing" },
+  { key: "detail", labelKey: "detail.template.detail" },
+  { key: "gallery", labelKey: "detail.template.gallery" },
+  { key: "content", labelKey: "detail.template.content" },
+  { key: "campaign", labelKey: "detail.template.campaign" },
+  { key: "custom", labelKey: "detail.template.custom" },
 ] as const;
 
 type TemplateCategoryKey = (typeof TEMPLATE_CATEGORY_ORDER)[number]["key"];
+type TFunction = (key: TranslationKey, params?: Record<string, string | number>) => string;
 
 interface TemplateGroupsPanelProps {
   templates: CanvasTemplateSummary[];
@@ -47,10 +51,10 @@ interface TemplateGroupsPanelProps {
   onArchiveUserTemplate: (template: CanvasTemplateSummary) => void;
 }
 
-function summarizeOutput(template: CanvasTemplateSummary): string {
+function summarizeOutput(template: CanvasTemplateSummary, t: TFunction): string {
   const labels = template.output_slots.map((slot) => slot.label).filter(Boolean);
   if (!labels.length) {
-    return "输出槽";
+    return t("detail.template.outputSlot");
   }
   return labels[0];
 }
@@ -116,7 +120,7 @@ function buildTemplatePreviewLayout(template: CanvasTemplateSummary): TemplatePr
     return null;
   }
 
-  // 小卡片预览只保留列关系，不按真实画布宽度缩放，避免多列模板被压扁。
+  // Keep only column relationships in the compact preview so wide templates remain legible.
   const sortedUniqueX = Array.from(new Set(nodes.map((node) => node.position_x))).sort((a, b) => a - b);
   const minY = Math.min(...nodes.map((node) => node.position_y));
   const maxY = Math.max(...nodes.map((node) => node.position_y));
@@ -155,7 +159,7 @@ function truncatePreviewTitle(title: string, maxLength = 7): string {
   return `${trimmed.slice(0, maxLength - 1).trimEnd()}...`;
 }
 
-function previewNodeMeta(nodeType: CanvasTemplateSummary["preview_nodes"][number]["node_type"]) {
+function previewNodeMeta(nodeType: CanvasTemplateSummary["preview_nodes"][number]["node_type"], t: TFunction) {
   const iconByType: Record<CanvasTemplateSummary["preview_nodes"][number]["node_type"], LucideIcon> = {
     product_context: FileText,
     reference_image: ImagePlus,
@@ -163,21 +167,21 @@ function previewNodeMeta(nodeType: CanvasTemplateSummary["preview_nodes"][number
     image_generation: ImageIcon,
   };
   const statusByType: Record<CanvasTemplateSummary["preview_nodes"][number]["node_type"], string> = {
-    product_context: "可用",
-    reference_image: "可用",
-    copy_generation: "未运行",
-    image_generation: "未运行",
+    product_context: t("detail.nodeStatus.available"),
+    reference_image: t("detail.nodeStatus.available"),
+    copy_generation: t("detail.nodeStatus.idle"),
+    image_generation: t("detail.nodeStatus.idle"),
   };
   if (nodeType === "copy_generation") {
-    return { icon: iconByType[nodeType], label: NODE_LABELS[nodeType], status: statusByType[nodeType] };
+    return { icon: iconByType[nodeType], label: localizedWorkflowNodeTypeLabel(nodeType, t), status: statusByType[nodeType] };
   }
   if (nodeType === "image_generation") {
-    return { icon: iconByType[nodeType], label: NODE_LABELS[nodeType], status: statusByType[nodeType] };
+    return { icon: iconByType[nodeType], label: localizedWorkflowNodeTypeLabel(nodeType, t), status: statusByType[nodeType] };
   }
   if (nodeType === "product_context") {
-    return { icon: iconByType[nodeType], label: NODE_LABELS[nodeType], status: statusByType[nodeType] };
+    return { icon: iconByType[nodeType], label: localizedWorkflowNodeTypeLabel(nodeType, t), status: statusByType[nodeType] };
   }
-  return { icon: iconByType[nodeType], label: NODE_LABELS[nodeType], status: statusByType[nodeType] };
+  return { icon: iconByType[nodeType], label: localizedWorkflowNodeTypeLabel(nodeType, t), status: statusByType[nodeType] };
 }
 
 function edgePath(source: PreviewNode, target: PreviewNode): string {
@@ -190,19 +194,21 @@ function edgePath(source: PreviewNode, target: PreviewNode): string {
 }
 
 function TemplateGraphPreview({ template }: { template: CanvasTemplateSummary }) {
-  const layout = buildTemplatePreviewLayout(template);
+  const { locale, t } = useI18n();
+  const displayTemplate = localizeCanvasTemplateSummary(template, locale);
+  const layout = buildTemplatePreviewLayout(displayTemplate);
   if (layout === null) {
     return (
       <div className="flex h-36 items-center justify-center border-b border-dashed border-zinc-200 bg-zinc-50 text-[11px] text-zinc-400">
-        暂无预览数据
+        {t("detail.template.noPreview")}
       </div>
     );
   }
 
-  const templateId = template.key.replace(/[^a-zA-Z0-9_-]/g, "-");
+  const templateId = displayTemplate.key.replace(/[^a-zA-Z0-9_-]/g, "-");
   const arrowId = `template-preview-arrow-${templateId}`;
   const gridId = `template-preview-grid-${templateId}`;
-  const edges = template.preview_edges
+  const edges = displayTemplate.preview_edges
     .map((edge) => ({
       edge,
       source: layout.nodesByKey.get(edge.source_node_key),
@@ -219,7 +225,7 @@ function TemplateGraphPreview({ template }: { template: CanvasTemplateSummary })
   return (
     <div
       role="img"
-      aria-label={`${template.title}模板结构预览`}
+      aria-label={t("detail.template.previewAria", { title: displayTemplate.title })}
       className="relative h-52 overflow-hidden border-b border-zinc-100 bg-zinc-50"
     >
       <svg
@@ -260,7 +266,7 @@ function TemplateGraphPreview({ template }: { template: CanvasTemplateSummary })
         ))}
       </svg>
       {layout.nodes.map((node) => {
-        const meta = previewNodeMeta(node.node_type);
+        const meta = previewNodeMeta(node.node_type, t);
         const Icon = meta.icon;
         return (
           <div
@@ -313,6 +319,7 @@ export function TemplateGroupsPanel({
   onRenameUserTemplate,
   onArchiveUserTemplate,
 }: TemplateGroupsPanelProps) {
+  const { locale, t } = useI18n();
   const [editingTemplateKey, setEditingTemplateKey] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
   const [activeCategory, setActiveCategory] = useState<TemplateCategoryKey>("all");
@@ -347,7 +354,7 @@ export function TemplateGroupsPanel({
   if (isError) {
     return (
       <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-        模板加载失败
+        {t("detail.template.loadFailed")}
       </div>
     );
   }
@@ -355,7 +362,7 @@ export function TemplateGroupsPanel({
   if (!templates.length) {
     return (
       <div className="flex min-h-[160px] items-center justify-center rounded-xl border border-dashed border-zinc-200 bg-zinc-50/60 px-3 py-6 text-center text-xs text-zinc-500">
-        暂无模板
+        {t("detail.template.empty")}
       </div>
     );
   }
@@ -388,7 +395,7 @@ export function TemplateGroupsPanel({
                     : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50"
                 }`}
               >
-                {category.label}
+                {t(category.labelKey)}
                 <span className={active ? "ml-1 text-zinc-300" : "ml-1 text-zinc-400"}>
                   {categoryCounts[category.key]}
                 </span>
@@ -400,15 +407,16 @@ export function TemplateGroupsPanel({
 
       {visibleTemplates.length ? null : (
         <div className="flex min-h-[120px] items-center justify-center rounded-lg border border-dashed border-zinc-200 bg-zinc-50/60 px-3 py-6 text-center text-xs text-zinc-500">
-          当前分类暂无模板
+          {t("detail.template.emptyCategory")}
         </div>
       )}
 
       <div className="space-y-2">
       {visibleTemplates.map((template) => {
+        const displayTemplate = localizeCanvasTemplateSummary(template, locale);
         const templateBusy = applyBusy && applyingTemplateKey === template.key;
-        const referenceLabel = summarizeReferenceInput(template);
-        const externalLabels = externalConnectionLabels(template);
+        const referenceLabel = summarizeReferenceInput(displayTemplate);
+        const externalLabels = externalConnectionLabels(displayTemplate);
         const isUserTemplate = template.source === "user" && Boolean(template.user_template_id);
         const editing = editingTemplateKey === template.key;
         const expanded = expandedTemplateKey === template.key;
@@ -422,25 +430,25 @@ export function TemplateGroupsPanel({
                 type="button"
                 onClick={() => setExpandedTemplateKey(expanded ? null : template.key)}
                 className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-zinc-50 hover:text-zinc-900"
-                aria-label={expanded ? "收起模板预览" : "展开模板预览"}
-                title={expanded ? "收起模板预览" : "展开模板预览"}
+                aria-label={expanded ? t("detail.template.collapsePreview") : t("detail.template.expandPreview")}
+                title={expanded ? t("detail.template.collapsePreview") : t("detail.template.expandPreview")}
               >
                 {expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
               </button>
               <div className="min-w-0 flex-1 space-y-1.5 text-left">
                 <div className="min-w-0">
                   <h3 className="break-words text-sm font-semibold leading-5 text-zinc-950">
-                    {template.title}
+                    {displayTemplate.title}
                   </h3>
                 </div>
                 <div className="flex min-w-0 flex-wrap items-center gap-1">
                   {isUserTemplate ? (
                     <span className="rounded-sm border border-zinc-100 bg-zinc-50/70 px-1.5 py-0.5 text-[9px] font-medium text-zinc-400">
-                      自定义
+                      {t("detail.template.custom")}
                     </span>
                   ) : null}
                   <span className="max-w-full truncate rounded-sm border border-emerald-100 bg-emerald-50/60 px-1.5 py-0.5 text-[9px] font-medium text-emerald-600">
-                    {summarizeOutput(template)}
+                    {summarizeOutput(displayTemplate, t)}
                   </span>
                   {referenceLabel ? (
                     <span className="max-w-full truncate rounded-sm border border-zinc-100 bg-white px-1.5 py-0.5 text-[9px] font-medium text-zinc-400">
@@ -468,8 +476,8 @@ export function TemplateGroupsPanel({
                       }}
                       disabled={userTemplateBusy}
                       className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-500 transition-colors hover:bg-zinc-50 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-50"
-                      aria-label="重命名模板"
-                      title="重命名模板"
+                      aria-label={t("detail.template.rename")}
+                      title={t("detail.template.rename")}
                     >
                       <Pencil size={13} />
                     </button>
@@ -478,8 +486,8 @@ export function TemplateGroupsPanel({
                       onClick={() => onArchiveUserTemplate(template)}
                       disabled={userTemplateBusy}
                       className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-red-200 bg-red-50 text-red-600 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
-                      aria-label="删除模板"
-                      title="删除模板"
+                      aria-label={t("detail.template.delete")}
+                      title={t("detail.template.delete")}
                     >
                       <Trash2 size={13} />
                     </button>
@@ -496,13 +504,13 @@ export function TemplateGroupsPanel({
                   ) : (
                     <Plus size={13} className="mr-1.5" />
                   )}
-                  添加
+                  {t("detail.template.add")}
                 </button>
               </div>
             </div>
             {expanded ? (
               <div className="border-t border-zinc-100">
-                <TemplateGraphPreview template={template} />
+                <TemplateGraphPreview template={displayTemplate} />
               </div>
             ) : null}
             {editing ? (
@@ -529,14 +537,14 @@ export function TemplateGroupsPanel({
                   onClick={() => setEditingTemplateKey(null)}
                   className="h-8 rounded-md px-2 text-xs font-medium text-zinc-500 hover:bg-zinc-50"
                 >
-                  取消
+                  {t("detail.cancel")}
                 </button>
                 <button
                   type="submit"
                   disabled={userTemplateBusy || !editingTitle.trim()}
                   className="h-8 rounded-md bg-zinc-950 px-2.5 text-xs font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  保存
+                  {t("detail.save")}
                 </button>
               </form>
             ) : null}

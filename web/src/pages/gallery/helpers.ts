@@ -1,3 +1,4 @@
+import { DEFAULT_LOCALE, translate, type Locale } from "../../lib/i18n";
 import type { GalleryEntry } from "../../lib/types";
 
 const DEFAULT_TILE_ASPECT_RATIO = 4 / 5;
@@ -15,11 +16,11 @@ export interface GalleryTileLayout {
   rowSpan: number;
 }
 
-export function galleryEntrySizeLabel(entry: GalleryEntry): string {
+export function galleryEntrySizeLabel(entry: GalleryEntry, locale: Locale = DEFAULT_LOCALE): string {
   if (entry.actual_size && entry.size && entry.actual_size !== entry.size) {
-    return `实际 ${entry.actual_size} · 请求 ${entry.size}`;
+    return translate(locale, "gallery.sizeActualRequested", { actual: entry.actual_size, requested: entry.size });
   }
-  return entry.actual_size ?? entry.size ?? "尺寸未知";
+  return entry.actual_size ?? entry.size ?? translate(locale, "gallery.sizeUnknown");
 }
 
 export function selectGalleryEntry(entries: GalleryEntry[], selectedId: string | null): GalleryEntry | null {

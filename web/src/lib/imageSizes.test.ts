@@ -31,6 +31,7 @@ describe("image size helpers", () => {
     expect(normalizeImageSizeValue("3840X2160")).toBe("3840x2160");
     expect(parseImageSizeValue("1280x720")).toEqual({ width: 1280, height: 720 });
     expect(labelForImageSize("1280x720")).toBe("自定义 · 1280×720");
+    expect(labelForImageSize("1280x720", "en-US")).toBe("Custom · 1280×720");
     expect(normalizeImageSizeValue("0x720")).toBeNull();
     expect(normalizeImageSizeValue("1024 * 1024")).toBeNull();
   });
@@ -84,6 +85,9 @@ describe("image size helpers", () => {
   });
 
   it("derives preset display labels for the picker grid", () => {
+    expect(labelForImageSize("1024x1024", "en-US")).toBe("Square · 1K");
+    expect(labelForImageSize("1024x1536", "en-US")).toBe("Portrait · 1K");
+    expect(labelForImageSize("1536x1024", "en-US")).toBe("Landscape · 1K");
     expect(DEFAULT_IMAGE_SIZE_OPTIONS.map(getImageSizePresetDisplay)).toEqual([
       { aspectLabel: "1:1", tierLabel: "1K", dimensionLabel: "1024×1024" },
       { aspectLabel: "2:3", tierLabel: "1K", dimensionLabel: "1024×1536" },

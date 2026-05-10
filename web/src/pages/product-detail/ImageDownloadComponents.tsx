@@ -2,6 +2,7 @@ import { Download, Sparkles } from "lucide-react";
 
 import { formatDateTime } from "../../lib/format";
 import type { DownloadableImage } from "../../lib/image-downloads";
+import { useI18n } from "../../lib/preferences";
 import type { PosterVariant, ProductDetail, SourceAsset } from "../../lib/types";
 import { buildPosterDownload, buildSourceImageDownload } from "./imageDownloads";
 
@@ -12,6 +13,7 @@ export function DownloadLink({
   image: DownloadableImage;
   variant?: "button" | "overlay";
 }) {
+  const { t } = useI18n();
   const className =
     variant === "overlay"
       ? "absolute bottom-2 right-2 inline-flex items-center rounded bg-white/95 px-2 py-1 text-[10px] font-medium text-zinc-700 shadow-sm ring-1 ring-zinc-200 hover:bg-white"
@@ -25,10 +27,10 @@ export function DownloadLink({
       target="_blank"
       rel="noreferrer"
       className={className}
-      title={`下载 ${image.filename}`}
-      aria-label={`下载 ${image.filename}`}
+      title={t("detail.downloadImage", { filename: image.filename })}
+      aria-label={t("detail.downloadImage", { filename: image.filename })}
     >
-      <Download size={11} className="mr-1" /> 下载
+      <Download size={11} className="mr-1" /> {t("detail.download")}
     </a>
   );
 }
@@ -48,15 +50,16 @@ export function PosterThumb({
   useAsReferenceDisabled?: boolean;
   useAsReferenceBusy?: boolean;
 }) {
-  const image = buildPosterDownload(productName, poster);
-  const thumbnailImage = buildPosterDownload(productName, poster, poster.thumbnail_url);
+  const { t } = useI18n();
+  const image = buildPosterDownload(productName, poster, undefined, t);
+  const thumbnailImage = buildPosterDownload(productName, poster, poster.thumbnail_url, t);
   return (
     <div className="group overflow-hidden rounded-md border border-zinc-200 bg-white">
       <button
         type="button"
         onClick={() => onPreview?.(image)}
         className="block w-full"
-        aria-label={`预览 ${image.alt}`}
+        aria-label={t("detail.previewImage", { alt: image.alt })}
       >
         <div className="aspect-square bg-zinc-100">
           <img
@@ -68,7 +71,7 @@ export function PosterThumb({
       </button>
       <div className="flex items-center justify-between gap-2 border-t border-zinc-100 px-2 py-1 text-[10px] text-zinc-500">
         <span className="min-w-0 truncate">
-          {poster.kind === "main_image" ? "主图" : "促销"} ·{" "}
+          {poster.kind === "main_image" ? t("detail.mainImage") : t("detail.promoImage")} ·{" "}
           {formatDateTime(poster.created_at)}
         </span>
         <div className="flex shrink-0 items-center gap-1">
@@ -82,9 +85,9 @@ export function PosterThumb({
               }}
               disabled={useAsReferenceDisabled || useAsReferenceBusy}
               className="inline-flex items-center rounded border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-medium text-blue-700 hover:border-blue-300 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
-              title="填入当前图片节点"
+              title={t("detail.fillCurrentNode")}
             >
-              {useAsReferenceBusy ? "填充中" : "填入"}
+              {useAsReferenceBusy ? t("detail.filling") : t("detail.fill")}
             </button>
           ) : null}
           <DownloadLink image={image} />
@@ -109,16 +112,20 @@ export function SourceAssetThumb({
   useAsReferenceDisabled?: boolean;
   useAsReferenceBusy?: boolean;
 }) {
+  const { t } = useI18n();
   const image = buildSourceImageDownload(
     product,
     asset,
-    asset.kind === "original_image" ? "主图" : "参考图",
+    asset.kind === "original_image" ? t("detail.mainImage") : t("detail.referenceImage"),
+    undefined,
+    t,
   );
   const thumbnailImage = buildSourceImageDownload(
     product,
     asset,
-    asset.kind === "original_image" ? "主图" : "参考图",
+    asset.kind === "original_image" ? t("detail.mainImage") : t("detail.referenceImage"),
     asset.thumbnail_url,
+    t,
   );
   return (
     <div className="group overflow-hidden rounded-md border border-zinc-200 bg-white">
@@ -126,7 +133,7 @@ export function SourceAssetThumb({
         type="button"
         onClick={() => onPreview?.(image)}
         className="block w-full"
-        aria-label={`预览 ${image.alt}`}
+        aria-label={t("detail.previewImage", { alt: image.alt })}
       >
         <div className="flex aspect-square items-center justify-center bg-zinc-100 p-2">
           <img
@@ -138,7 +145,7 @@ export function SourceAssetThumb({
       </button>
       <div className="flex items-center justify-between gap-2 border-t border-zinc-100 px-2 py-1 text-[10px] text-zinc-500">
         <span className="min-w-0 truncate">
-          参考图 · {formatDateTime(asset.created_at)}
+          {t("detail.referenceImage")} · {formatDateTime(asset.created_at)}
         </span>
         <div className="flex shrink-0 items-center gap-1">
           {onUseAsReference ? (
@@ -151,9 +158,9 @@ export function SourceAssetThumb({
               }}
               disabled={useAsReferenceDisabled || useAsReferenceBusy}
               className="inline-flex items-center rounded border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-medium text-blue-700 hover:border-blue-300 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
-              title="填入当前图片节点"
+              title={t("detail.fillCurrentNode")}
             >
-              {useAsReferenceBusy ? "填充中" : "填入"}
+              {useAsReferenceBusy ? t("detail.filling") : t("detail.fill")}
             </button>
           ) : null}
           <DownloadLink image={image} />
@@ -162,7 +169,7 @@ export function SourceAssetThumb({
       {onUseAsReference ? (
         <div className="flex items-center border-t border-zinc-100 px-2 py-1.5 text-[10px] leading-4 text-zinc-500">
           <Sparkles size={11} className="mr-1 shrink-0 text-indigo-500" />
-          可作参考
+          {t("detail.canUseAsReference")}
         </div>
       ) : null}
     </div>

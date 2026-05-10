@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --font-sans: "Inter", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
 }
@@ -16,6 +18,11 @@ body {
   color: rgb(24 24 27);
 }
 
+:root.dark body {
+  background: rgb(2 6 23);
+  color: rgb(226 232 240);
+}
+
 button,
 input,
 textarea {
@@ -24,4 +31,98 @@ textarea {
 
 * {
   box-sizing: border-box;
+}
+
+:root.dark {
+  color-scheme: dark;
+}
+
+:root.dark .bg-white {
+  background-color: rgb(15 23 42);
+}
+
+:root.dark .bg-white\/95 {
+  background-color: rgb(15 23 42 / 0.95);
+}
+
+:root.dark .bg-white\/90 {
+  background-color: rgb(15 23 42 / 0.9);
+}
+
+:root.dark .bg-white\/80,
+:root.dark .bg-white\/70 {
+  background-color: rgb(30 41 59 / 0.78);
+}
+
+:root.dark .bg-zinc-50,
+:root.dark .bg-slate-50,
+:root.dark .bg-slate-50\/70,
+:root.dark .bg-slate-50\/80,
+:root.dark .bg-zinc-50\/40,
+:root.dark .bg-zinc-50\/60,
+:root.dark .bg-zinc-50\/70,
+:root.dark .bg-slate-100,
+:root.dark .bg-zinc-100 {
+  background-color: rgb(15 23 42);
+}
+
+:root.dark .bg-slate-100\/80 {
+  background-color: rgb(30 41 59 / 0.8);
+}
+
+:root.dark .bg-zinc-100\/80 {
+  background-color: rgb(39 39 42 / 0.8);
+}
+
+:root.dark .border-slate-100,
+:root.dark .border-slate-200,
+:root.dark .border-zinc-100,
+:root.dark .border-zinc-200,
+:root.dark .border-zinc-300 {
+  border-color: rgb(51 65 85);
+}
+
+:root.dark .text-slate-950,
+:root.dark .text-zinc-950,
+:root.dark .text-slate-900,
+:root.dark .text-zinc-900,
+:root.dark .text-slate-800,
+:root.dark .text-zinc-800,
+:root.dark .text-slate-700,
+:root.dark .text-zinc-700 {
+  color: rgb(226 232 240);
+}
+
+:root.dark .text-slate-600,
+:root.dark .text-zinc-600,
+:root.dark .text-slate-500,
+:root.dark .text-zinc-500 {
+  color: rgb(148 163 184);
+}
+
+:root.dark .text-slate-400,
+:root.dark .text-zinc-400,
+:root.dark .text-zinc-300 {
+  color: rgb(100 116 139);
+}
+
+:root.dark input,
+:root.dark textarea,
+:root.dark select {
+  background-color: rgb(15 23 42);
+  color: rgb(226 232 240);
+  border-color: rgb(51 65 85);
+}
+
+:root.dark input::placeholder,
+:root.dark textarea::placeholder {
+  color: rgb(100 116 139);
+}
+
+:root.dark .shadow-sm,
+:root.dark .shadow-md,
+:root.dark .shadow-lg,
+:root.dark .shadow-xl,
+:root.dark .shadow-2xl {
+  --tw-shadow-color: rgb(0 0 0 / 0.35);
 }

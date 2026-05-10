@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { DEFAULT_IMAGE_TOOL_ALLOWED_FIELDS } from "../lib/imageToolOptions";
+import { useI18n } from "../lib/preferences";
 import type { ImageToolOptionKey, ImageToolOptions } from "../lib/types";
 
 interface ImageToolControlsProps {
@@ -24,6 +25,7 @@ export function ImageToolControls({
   surface = "card",
   allowedFields = DEFAULT_IMAGE_TOOL_ALLOWED_FIELDS,
 }: ImageToolControlsProps) {
+  const { t } = useI18n();
   const update = (next: Partial<ImageToolOptions>) => onChange({ ...value, ...next });
   const allowed = new Set(allowedFields);
   if (!allowed.size) {
@@ -33,23 +35,23 @@ export function ImageToolControls({
     surface === "card" ? "rounded-2xl border border-slate-200 bg-white p-4" : "space-y-3";
   return (
     <div className={containerClassName}>
-      <div className="mb-3 text-sm font-semibold text-slate-950">Provider</div>
+      <div className="mb-3 text-sm font-semibold text-slate-950">{t("imageTool.provider")}</div>
       <div className="grid grid-cols-2 gap-2">
         {allowed.has("model") ? (
           <CompactInput
-            label="Tool"
+            label={t("imageTool.tool")}
             value={value.model ?? ""}
-            placeholder="默认"
+            placeholder={t("imageTool.default")}
             onChange={(next) => update({ model: next || null })}
           />
         ) : null}
         {allowed.has("quality") ? (
           <CompactSelect
-            label="质量"
+            label={t("imageTool.quality")}
             value={value.quality ?? ""}
             onChange={(next) => update({ quality: (next || null) as ImageToolOptions["quality"] })}
           >
-            <option value="">默认</option>
+            <option value="">{t("imageTool.default")}</option>
             <option value="auto">Auto</option>
             <option value="low">Low</option>
             <option value="medium">Medium</option>
@@ -58,11 +60,11 @@ export function ImageToolControls({
         ) : null}
         {allowed.has("output_format") ? (
           <CompactSelect
-            label="格式"
+            label={t("imageTool.format")}
             value={value.output_format ?? ""}
             onChange={(next) => update({ output_format: (next || null) as ImageToolOptions["output_format"] })}
           >
-            <option value="">默认</option>
+            <option value="">{t("imageTool.default")}</option>
             <option value="png">PNG</option>
             <option value="jpeg">JPEG</option>
             <option value="webp">WebP</option>
@@ -70,20 +72,20 @@ export function ImageToolControls({
         ) : null}
         {allowed.has("output_compression") ? (
           <CompactInput
-            label="压缩"
+            label={t("imageTool.compression")}
             value={value.output_compression ?? ""}
             inputMode="numeric"
-            placeholder="默认"
+            placeholder={t("imageTool.default")}
             onChange={(next) => update({ output_compression: parseOptionalNumber(next) })}
           />
         ) : null}
         {allowed.has("background") ? (
           <CompactSelect
-            label="背景"
+            label={t("imageTool.background")}
             value={value.background ?? ""}
             onChange={(next) => update({ background: (next || null) as ImageToolOptions["background"] })}
           >
-            <option value="">默认</option>
+            <option value="">{t("imageTool.default")}</option>
             <option value="auto">Auto</option>
             <option value="opaque">Opaque</option>
             <option value="transparent">Transparent</option>
@@ -91,11 +93,11 @@ export function ImageToolControls({
         ) : null}
         {allowed.has("moderation") ? (
           <CompactSelect
-            label="审核"
+            label={t("imageTool.moderation")}
             value={value.moderation ?? ""}
             onChange={(next) => update({ moderation: (next || null) as ImageToolOptions["moderation"] })}
           >
-            <option value="">默认</option>
+            <option value="">{t("imageTool.default")}</option>
             <option value="auto">Auto</option>
             <option value="low">Low</option>
           </CompactSelect>
@@ -106,7 +108,7 @@ export function ImageToolControls({
             value={value.action ?? ""}
             onChange={(next) => update({ action: (next || null) as ImageToolOptions["action"] })}
           >
-            <option value="">默认</option>
+            <option value="">{t("imageTool.default")}</option>
             <option value="auto">Auto</option>
             <option value="generate">Generate</option>
             <option value="edit">Edit</option>
@@ -118,7 +120,7 @@ export function ImageToolControls({
             value={value.input_fidelity ?? ""}
             onChange={(next) => update({ input_fidelity: (next || null) as ImageToolOptions["input_fidelity"] })}
           >
-            <option value="">默认</option>
+            <option value="">{t("imageTool.default")}</option>
             <option value="low">Low</option>
             <option value="high">High</option>
           </CompactSelect>
@@ -128,7 +130,7 @@ export function ImageToolControls({
             label="Partial"
             value={value.partial_images ?? ""}
             inputMode="numeric"
-            placeholder="默认"
+            placeholder={t("imageTool.default")}
             onChange={(next) => update({ partial_images: parseOptionalNumber(next) })}
           />
         ) : null}
@@ -137,7 +139,7 @@ export function ImageToolControls({
             label="n"
             value={value.n ?? ""}
             inputMode="numeric"
-            placeholder="默认"
+            placeholder={t("imageTool.default")}
             onChange={(next) => update({ n: parseOptionalNumber(next) })}
           />
         ) : null}

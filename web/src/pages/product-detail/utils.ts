@@ -1,3 +1,4 @@
+import { DEFAULT_LOCALE, translate, type TranslationKey, type TranslationParams } from "../../lib/i18n";
 import type {
   ProductWorkflow,
   ProductWorkflowStatus,
@@ -5,8 +6,19 @@ import type {
   WorkflowNodeRun,
   WorkflowRun,
 } from "../../lib/types";
-import { NODE_STATUS_LABELS } from "./constants";
 import { workflowNodeDisplayTitle } from "./nodeDisplay";
+
+type TranslateFunction = (key: TranslationKey, params?: TranslationParams) => string;
+
+const defaultT: TranslateFunction = (key, params) => translate(DEFAULT_LOCALE, key, params);
+
+const NODE_STATUS_LABEL_KEYS: Record<WorkflowNode["status"], TranslationKey> = {
+  idle: "detail.nodeStatus.idle",
+  queued: "detail.nodeStatus.queued",
+  running: "detail.nodeStatus.running",
+  succeeded: "detail.nodeStatus.succeeded",
+  failed: "detail.nodeStatus.failed",
+};
 
 export interface WorkflowNodeRunActionState {
   disabled: boolean;
@@ -61,11 +73,11 @@ export function statusClass(status: WorkflowNode["status"]): string {
   }[status];
 }
 
-export function workflowNodeStatusLabel(node: Pick<WorkflowNode, "node_type" | "status">): string {
+export function workflowNodeStatusLabel(node: Pick<WorkflowNode, "node_type" | "status">, t: TranslateFunction = defaultT): string {
   if (node.node_type === "product_context" && node.status === "idle") {
-    return "可用";
+    return t("detail.nodeStatus.available");
   }
-  return NODE_STATUS_LABELS[node.status];
+  return t(NODE_STATUS_LABEL_KEYS[node.status]);
 }
 
 export function isImageWorkflowNodeWaiting(node: WorkflowNode): boolean {
@@ -75,15 +87,17 @@ export function isImageWorkflowNodeWaiting(node: WorkflowNode): boolean {
   );
 }
 
-export function imageWorkflowNodeWaitingLabel(node: WorkflowNode): string {
+export function imageWorkflowNodeWaitingLabel(node: WorkflowNode, t: TranslateFunction = defaultT): string {
   if (!isImageWorkflowNodeWaiting(node)) {
     return "";
   }
   if (node.node_type === "reference_image") {
-    const slotLabel = workflowNodeDisplayTitle(node);
-    return node.status === "queued" ? `${slotLabel}排队更新` : `${slotLabel}更新中`;
+    const slotLabel = workflowNodeDisplayTitle(node, t);
+    return node.status === "queued"
+      ? t("detail.nodeWaiting.referenceQueued", { label: slotLabel })
+      : t("detail.nodeWaiting.referenceRunning", { label: slotLabel });
   }
-  return node.status === "queued" ? "图片排队生成" : "图片生成中";
+  return node.status === "queued" ? t("detail.nodeWaiting.imageQueued") : t("detail.nodeWaiting.imageRunning");
 }
 
 export function getWorkflowNodeRunActionState(
@@ -95,21 +109,22 @@ export function getWorkflowNodeRunActionState(
     runSubmissionPending: boolean;
     pendingStartNodeId: string | null;
   },
+  t: TranslateFunction = defaultT,
 ): WorkflowNodeRunActionState {
   if (node.status === "queued") {
     return {
       disabled: true,
       pending: true,
-      label: "排队中",
-      title: "该节点已在当前运行中排队",
+      label: t("detail.nodeStatus.queued"),
+      title: t("detail.runAction.queuedTitle"),
     };
   }
   if (node.status === "running") {
     return {
       disabled: true,
       pending: true,
-      label: "运行中",
-      title: "该节点正在运行",
+      label: t("detail.nodeStatus.running"),
+      title: t("detail.runAction.runningTitle"),
     };
   }
   if (runSubmissionPending) {
@@ -117,15 +132,15 @@ export function getWorkflowNodeRunActionState(
     return {
       disabled: true,
       pending: pendingThisNode,
-      label: pendingThisNode ? "提交中" : "运行",
-      title: pendingThisNode ? "正在提交运行" : "正在提交另一个运行",
+      label: pendingThisNode ? t("detail.runAction.submitting") : t("detail.run"),
+      title: pendingThisNode ? t("detail.runAction.submittingTitle") : t("detail.runAction.otherSubmittingTitle"),
     };
   }
   return {
     disabled: false,
     pending: false,
-    label: node.status === "failed" ? "重试" : "运行",
-    title: node.status === "failed" ? "重新运行该节点" : "运行节点",
+    label: node.status === "failed" ? t("detail.retry") : t("detail.run"),
+    title: node.status === "failed" ? t("detail.runAction.retryTitle") : t("detail.runAction.runTitle"),
   };
 }
 

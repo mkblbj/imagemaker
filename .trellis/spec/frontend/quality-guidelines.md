@@ -81,6 +81,9 @@ when that keeps runtime behavior unchanged.
 
 - New pure helper -> add Vitest unit coverage for normal and edge cases.
 - ProductDetail helper changes -> prefer colocated tests under `web/src/pages/product-detail/`.
+- Locale/theme helper changes -> update or add tests near `web/src/lib/preferences.test.ts`.
+- Locale-aware pure helper changes -> test both `zh-CN` and `en-US`, including fallback behavior for legacy system labels
+  when old records store default Chinese titles.
 - DTO/API behavior changes still require `just web-build`; frontend unit tests do not replace backend contract tests.
 
 ### 7. Wrong vs Correct
@@ -167,6 +170,8 @@ Review new UI for:
 - Error text is visible near the action that failed.
 - Image URLs from the backend are converted with `api.toApiUrl(...)` before being used in `src` or links.
 - Destructive actions such as delete are explicit buttons and update cache/selection state after success.
+- Visible UI chrome uses `useI18n()` or locale-aware helpers instead of hard-coded page-local strings.
+- Light surfaces, borders, and muted text have dark-mode variants, and product/image previews remain inspectable.
 
 ---
 
@@ -191,6 +196,8 @@ Use `just web-dev` so `.env.dev` and proxy behavior match backend dev commands.
 - New server state held only in local component state when it should be cached/invalidation-aware.
 - Committing `web/dist/`, `web/node_modules/`, `*.tsbuildinfo`, or local env files.
 - Adding lint/test commands to docs without actually configuring them in `web/package.json`.
+- Adding page-local locale/theme persistence outside `PreferencesProvider`.
+- Translating product/operator/model-authored content instead of only ProductFlow UI chrome and system labels.
 
 ---
 
@@ -206,3 +213,5 @@ Before accepting frontend changes, check:
 - Are backend enum/DTO changes mirrored in `web/src/lib/types.ts`?
 - Are loading/error/disabled states present for async actions?
 - Does the UI match the existing Tailwind/zinc visual language?
+- Does visible UI chrome render correctly in both `zh-CN` and `en-US`?
+- Does the changed UI remain readable in `light`, `dark`, and `system` theme modes?

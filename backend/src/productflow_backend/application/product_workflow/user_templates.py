@@ -49,6 +49,7 @@ ARTIFACT_SPECIFIC_CONFIG_KEYS = frozenset(
         "workflow_id",
     }
 )
+SYSTEM_TEMPLATE_CONFIG_KEYS = frozenset({"_canvas_template"})
 
 ARTIFACT_SPECIFIC_KEY_SUFFIXES = ("_id", "_ids", "_url", "_path")
 
@@ -335,6 +336,8 @@ def _sanitize_reusable_config(value: Any, *, path: tuple[str, ...] = ()) -> Any:
         for key, nested_value in value.items():
             if not isinstance(key, str):
                 raise BusinessValidationError("模板配置包含不可复用的产物数据")
+            if key in SYSTEM_TEMPLATE_CONFIG_KEYS:
+                continue
             normalized_key = key.lower()
             if normalized_key in ARTIFACT_SPECIFIC_CONFIG_KEYS:
                 continue

@@ -6,14 +6,14 @@
 
 ## Overview
 
-ProductFlow uses three state categories:
+ProductFlow uses four state categories:
 
 1. Server state: TanStack Query in pages and `AppRoutes()`.
 2. Local UI/form state: React `useState`, `useMemo`, and `useEffect` inside page components.
 3. URL state: React Router params and navigation.
+4. Durable local UI preferences: locale and theme mode in `PreferencesProvider`.
 
-There is no Redux, Zustand, Jotai, app-wide React context (besides `QueryClientProvider`), custom event bus, or durable
-browser-local onboarding state.
+There is no Redux, Zustand, Jotai, custom event bus, or durable browser-local onboarding state.
 
 ---
 
@@ -72,6 +72,38 @@ Do not introduce a global store just to track current page or product ID; use th
 
 ---
 
+## Durable UI Preferences
+
+Locale and theme are the only durable browser-local UI preferences currently supported:
+
+- Provider: `PreferencesProvider` in `web/src/lib/preferences.tsx`, mounted once in `App.tsx` inside `BrowserRouter`.
+- Locale storage key: `productflow.locale`; default locale is `zh-CN`.
+- Theme storage key: `productflow.theme`; default preference is `system`.
+- Supported theme preferences are `light`, `dark`, and `system`; `system` resolves from `prefers-color-scheme`.
+- The provider updates `document.documentElement.lang`, root `class="dark"` when the resolved theme is dark, and root
+  `data-theme` / `data-theme-preference` attributes.
+- Use `useI18n()` or `usePreferences()` in components that need locale/theme values; do not create page-local duplicate
+  locale/theme state.
+
+Locale and theme are not server records. Do not store them in TanStack Query, add backend settings for them, or persist
+them with auth/session state unless a future product requirement explicitly changes that boundary.
+
+Good:
+
+```tsx
+const { t } = useI18n();
+return <button type="button">{t("nav.settings")}</button>;
+```
+
+Bad:
+
+```tsx
+const [locale] = useState(window.localStorage.getItem("productflow.locale"));
+return <button type="button">{locale === "en-US" ? "Settings" : "配置"}</button>;
+```
+
+---
+
 ## Derived State
 
 Prefer derived values over additional state:
@@ -109,3 +141,4 @@ Keep error display local unless multiple pages need a shared notification system
 - Hiding route state in local storage or globals instead of using React Router params.
 - Storing API keys or admin keys in frontend local storage. Authentication is session-cookie based.
 - Reintroducing durable browser-local onboarding, tour, help, or tutorial state without a new approved product requirement.
+- Adding new durable local preferences outside `PreferencesProvider` without updating this spec and focused helper tests.

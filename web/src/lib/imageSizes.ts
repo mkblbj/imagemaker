@@ -1,3 +1,5 @@
+import { DEFAULT_LOCALE, translate, type Locale } from "./i18n";
+
 export interface ImageSizeOption {
   value: string;
   label: string;
@@ -37,8 +39,6 @@ const BUILT_IN_IMAGE_SIZE_OPTIONS: ImageSizeOption[] = [
   { label: "竖图 · 4K", description: "9:16 · 2160×3840", aspect: "9:16", value: "2160x3840" },
   { label: "横图 · 4K", description: "16:9 · 3840×2160", aspect: "16:9", value: "3840x2160" },
 ];
-
-const PRESET_LABELS = new Map(BUILT_IN_IMAGE_SIZE_OPTIONS.map((option) => [option.value, option.label]));
 
 function normalizeMaxDimension(maxDimension?: number): number {
   if (!Number.isFinite(maxDimension)) {
@@ -126,11 +126,29 @@ export function formatImageSizeValue(value: string): string {
   return value.replace("x", "×");
 }
 
-export function labelForImageSize(value: string): string {
-  return PRESET_LABELS.get(value) ?? `自定义 · ${formatImageSizeValue(value)}`;
+function imageSizeKindLabel(aspect: string, locale: Locale): string {
+  if (aspect === "1:1") {
+    return translate(locale, "imageSize.square");
+  }
+  if (aspect === "2:3" || aspect === "9:16") {
+    return translate(locale, "imageSize.portrait");
+  }
+  return translate(locale, "imageSize.landscape");
 }
 
-export function getImageSizePresetDisplay(option: ImageSizeOption): ImageSizePresetDisplay {
+export function labelForImageSize(value: string, locale: Locale = DEFAULT_LOCALE): string {
+  const preset = BUILT_IN_IMAGE_SIZE_OPTIONS.find((option) => option.value === value);
+  if (preset) {
+    return `${imageSizeKindLabel(preset.aspect, locale)} · ${getImageSizePresetDisplay(preset, locale).tierLabel}`;
+  }
+  return `${translate(locale, "imageSize.customLabel")} · ${formatImageSizeValue(value)}`;
+}
+
+export function getImageSizePresetDisplay(
+  option: ImageSizeOption,
+  localeOrIndex: Locale | number = DEFAULT_LOCALE,
+): ImageSizePresetDisplay {
+  void localeOrIndex;
   const [, tier] = option.label.split("·", 2);
   return {
     aspectLabel: option.aspect,

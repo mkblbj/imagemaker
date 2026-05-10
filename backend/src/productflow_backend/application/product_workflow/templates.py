@@ -14,6 +14,7 @@ from productflow_backend.domain.errors import BusinessValidationError, NotFoundE
 from productflow_backend.infrastructure.db.models import Product, ProductWorkflow, WorkflowEdge, WorkflowNode
 
 DEFAULT_PRODUCT_CREATION_CANVAS_TEMPLATE_KEYS = frozenset({"", "default", "basic", "blank", "minimal"})
+TEMPLATE_METADATA_CONFIG_KEY = "_canvas_template"
 
 
 def resolve_product_creation_canvas_template(canvas_template_key: str | None) -> CanvasTemplate | None:
@@ -78,13 +79,20 @@ def materialize_canvas_template_graph(
     for node_spec in template.nodes:
         if node_spec.key in nodes_by_template_key:
             continue
+        config_json = deepcopy(node_spec.config_json)
+        if template.source == "builtin":
+            config_json[TEMPLATE_METADATA_CONFIG_KEY] = {
+                "source": template.source,
+                "template_key": template.key,
+                "node_key": node_spec.key,
+            }
         node = WorkflowNode(
             workflow_id=workflow.id,
             node_type=node_spec.node_type,
             title=node_spec.title,
             position_x=node_spec.position_x + position_x_offset,
             position_y=node_spec.position_y + position_y_offset,
-            config_json=deepcopy(node_spec.config_json),
+            config_json=config_json,
         )
         session.add(node)
         nodes_by_template_key[node_spec.key] = node

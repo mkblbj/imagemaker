@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import type { TranslationKey } from "../../lib/i18n";
 import type { ProductWorkflow, WorkflowNode, WorkflowRun, WorkflowRunStatusSummary } from "../../lib/types";
 import {
   getWorkflowNodeCancelableRun,
@@ -28,6 +29,10 @@ const baseNode: WorkflowNode = {
   created_at: "2026-04-26T00:00:00Z",
   updated_at: "2026-04-26T00:00:00Z",
 };
+
+function stubT(values: Partial<Record<TranslationKey, string>>) {
+  return (key: TranslationKey): string => values[key] ?? key;
+}
 
 function workflowWith(overrides: Partial<ProductWorkflow>): ProductWorkflow {
   return {
@@ -127,6 +132,9 @@ describe("product-detail utils", () => {
     expect(imageWorkflowNodeWaitingLabel({ ...baseNode, node_type: "image_generation", status: "queued" })).toBe(
       "图片排队生成",
     );
+    expect(imageWorkflowNodeWaitingLabel({ ...baseNode, node_type: "image_generation", status: "queued" }, stubT({
+      "detail.nodeWaiting.imageQueued": "Image queued",
+    }))).toBe("Image queued");
     expect(isImageWorkflowNodeWaiting({ ...baseNode, node_type: "copy_generation", status: "running" })).toBe(false);
     expect(imageWorkflowNodeWaitingLabel({ ...baseNode, node_type: "reference_image", status: "succeeded" })).toBe("");
   });
@@ -185,6 +193,22 @@ describe("product-detail utils", () => {
       disabled: false,
       pending: false,
       label: "运行",
+    });
+
+    expect(
+      getWorkflowNodeRunActionState(
+        { ...baseNode, id: "node-en", status: "failed" },
+        idleOptions,
+        stubT({
+          "detail.retry": "Retry",
+          "detail.runAction.retryTitle": "Run this node again",
+        }),
+      ),
+    ).toMatchObject({
+      disabled: false,
+      pending: false,
+      label: "Retry",
+      title: "Run this node again",
     });
   });
 
@@ -261,6 +285,9 @@ describe("product-detail utils", () => {
   it("labels idle product context nodes as usable static context", () => {
     expect(workflowNodeStatusLabel({ ...baseNode, node_type: "product_context", status: "idle" })).toBe("可用");
     expect(workflowNodeStatusLabel({ ...baseNode, node_type: "image_generation", status: "idle" })).toBe("未运行");
+    expect(workflowNodeStatusLabel({ ...baseNode, node_type: "image_generation", status: "idle" }, stubT({
+      "detail.nodeStatus.idle": "Not run",
+    }))).toBe("Not run");
   });
 
   it("merges lightweight workflow status without replacing structure or node outputs", () => {

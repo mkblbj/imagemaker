@@ -31,6 +31,7 @@ import { TopNav } from "../components/TopNav";
 import { api, ApiError } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 import { DEFAULT_IMAGE_TOOL_ALLOWED_FIELDS } from "../lib/imageToolOptions";
+import { useI18n } from "../lib/preferences";
 import {
   DEFAULT_IMAGE_GENERATION_MAX_DIMENSION,
   buildImageSizeOptions,
@@ -88,7 +89,6 @@ import type {
   SourceAsset,
 } from "../lib/types";
 
-const DELETION_DISABLED_MESSAGE = "删除功能已关闭，请联系管理员";
 const DUPLICATE_GENERATION_SUBMIT_WINDOW_MS = 1800;
 const MAX_BRANCH_CONTEXT_IMAGES = 6;
 const DESKTOP_RESIZABLE_LAYOUT_QUERY = "(min-width: 1024px)";
@@ -122,43 +122,59 @@ function getSessionReferenceAssets(imageSession: ImageSessionDetail | undefined)
   return imageSession?.assets.filter((asset) => asset.kind === "reference_upload") ?? [];
 }
 
-function generationTaskQueueText(task: ImageSessionGenerationTask) {
+function generationTaskQueueText(task: ImageSessionGenerationTask, t: ReturnType<typeof useI18n>["t"]) {
   if (task.status === "queued") {
     const ahead = task.queued_ahead_count ?? 0;
-    const position = task.queue_position ? `当前第 ${task.queue_position} 位` : "当前排队中";
-    return `前方 ${ahead} 个，${position}；全局活跃 ${task.queue_active_count}/${task.queue_max_concurrent_tasks}。`;
+    const position = task.queue_position
+      ? t("chat.queuePosition", { position: task.queue_position })
+      : t("chat.queueWaiting");
+    return t("chat.queueText", {
+      ahead,
+      position,
+      active: task.queue_active_count,
+      max: task.queue_max_concurrent_tasks,
+    });
   }
   if (task.status === "running") {
-    const providerStatus = task.provider_response_status ? `供应商状态 ${task.provider_response_status}；` : "";
-    return `${providerStatus}最近进度 ${task.progress_updated_at ? formatDateTime(task.progress_updated_at) : "刚开始"}；全局运行 ${task.queue_running_count} 个，排队 ${task.queue_queued_count} 个。`;
+    const providerStatus = task.provider_response_status
+      ? t("chat.providerStatus", { status: task.provider_response_status })
+      : "";
+    return t("chat.runningText", {
+      providerStatus,
+      progress: task.progress_updated_at ? formatDateTime(task.progress_updated_at) : t("chat.progressJustStarted"),
+      running: task.queue_running_count,
+      queued: task.queue_queued_count,
+    });
   }
   return "";
 }
 
-function imageRoundSizeLabel(round: ImageSessionRound) {
+function imageRoundSizeLabel(round: ImageSessionRound, t: ReturnType<typeof useI18n>["t"]) {
   if (round.actual_size && round.actual_size !== round.size) {
-    return `实际 ${round.actual_size} · 请求 ${round.size}`;
+    return t("gallery.sizeActualRequested", { actual: round.actual_size, requested: round.size });
   }
   return round.actual_size ?? round.size;
 }
 
-function placeholderStatusLabel(candidate: ImageHistoryPlaceholderCandidate) {
+function placeholderStatusLabel(candidate: ImageHistoryPlaceholderCandidate, t: ReturnType<typeof useI18n>["t"]) {
   if (candidate.status === "queued") {
-    return candidate.task.queue_position ? `排队中 · 第 ${candidate.task.queue_position} 位` : "排队中";
+    return candidate.task.queue_position
+      ? t("chat.statusQueuedPosition", { position: candidate.task.queue_position })
+      : t("chat.statusQueued");
   }
   if (candidate.status === "running") {
-    return `生成中 · ${candidate.candidate_index}/${candidate.candidate_count}`;
+    return t("chat.statusRunning", { index: candidate.candidate_index, count: candidate.candidate_count });
   }
   if (candidate.status === "completed") {
-    return "已完成，刷新中";
+    return t("chat.statusCompletedRefreshing");
   }
   if (candidate.status === "failed") {
-    return "生成失败";
+    return t("chat.statusFailed");
   }
   if (candidate.status === "cancelled") {
-    return "已取消";
+    return t("chat.statusCancelled");
   }
-  return "已完成";
+  return t("chat.statusCompleted");
 }
 
 function placeholderStatusClass(candidate: ImageHistoryPlaceholderCandidate) {
@@ -178,6 +194,7 @@ function placeholderStatusClass(candidate: ImageHistoryPlaceholderCandidate) {
 }
 
 export function ImageChatPage() {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { productId } = useParams();
@@ -311,7 +328,7 @@ export function ImageChatPage() {
       setErrorMessage("");
     },
     onError: (error) => {
-      setErrorMessage(error instanceof ApiError ? error.detail : "创建会话失败");
+      setErrorMessage(error instanceof ApiError ? error.detail : t("chat.createFailed"));
     },
   });
 
@@ -411,7 +428,7 @@ export function ImageChatPage() {
     pendingGeneratedRoundCountRef.current = reconciled.pendingGeneratedRoundCount;
 
     if (reconciled.generatedRoundCompleted) {
-      setSuccessMessage("新候选已生成");
+      setSuccessMessage(t("chat.newCandidate"));
       setErrorMessage("");
     }
   }, [
@@ -449,7 +466,7 @@ export function ImageChatPage() {
     return imageSession.rounds.find((round) => round.generated_asset.id === branchBaseAssetId) ?? null;
   }, [branchBaseAssetId, imageSession]);
   const baseRequirementMessage =
-    requiresGenerationBase && !branchBaseRound ? "请选择一张已完成历史图作为本轮基图" : "";
+    requiresGenerationBase && !branchBaseRound ? t("chat.baseRequired") : "";
 
   const sourceImage = useMemo(
     () => productQuery.data?.source_assets.find((asset) => asset.kind === "original_image") ?? null,
@@ -475,11 +492,11 @@ export function ImageChatPage() {
       queryClient.setQueryData(["image-session", updated.id], updated);
       void queryClient.invalidateQueries({ queryKey: ["image-sessions", productId ?? "standalone"] });
       setRenameEnabled(false);
-      setSuccessMessage("会话名称已更新");
+      setSuccessMessage(t("chat.renameSuccess"));
       setErrorMessage("");
     },
     onError: (error) => {
-      setErrorMessage(error instanceof ApiError ? error.detail : "会话重命名失败");
+      setErrorMessage(error instanceof ApiError ? error.detail : t("chat.renameFailed"));
     },
   });
 
@@ -506,12 +523,12 @@ export function ImageChatPage() {
         );
       }
       if (isCurrentSession) {
-        setSuccessMessage("参考图已上传");
+        setSuccessMessage(t("chat.referenceUploaded"));
         setErrorMessage("");
       }
     },
     onError: (error) => {
-      setErrorMessage(error instanceof ApiError ? error.detail : "参考图上传失败");
+      setErrorMessage(error instanceof ApiError ? error.detail : t("chat.referenceUploadFailed"));
     },
   });
 
@@ -530,12 +547,12 @@ export function ImageChatPage() {
             maxSelectedReferenceCount,
           ),
         );
-        setSuccessMessage("参考图已删除");
+        setSuccessMessage(t("chat.referenceDeleted"));
         setErrorMessage("");
       }
     },
     onError: (error) => {
-      setErrorMessage(error instanceof ApiError ? error.detail : "参考图删除失败");
+      setErrorMessage(error instanceof ApiError ? error.detail : t("chat.referenceDeleteFailed"));
     },
   });
 
@@ -556,11 +573,11 @@ export function ImageChatPage() {
         }
       }
       await queryClient.invalidateQueries({ queryKey: ["image-sessions", productId ?? "standalone"] });
-      setSuccessMessage("会话已删除");
+      setSuccessMessage(t("chat.sessionDeleted"));
       setErrorMessage("");
     },
     onError: (error) => {
-      setErrorMessage(error instanceof ApiError ? error.detail : "会话删除失败");
+      setErrorMessage(error instanceof ApiError ? error.detail : t("chat.sessionDeleteFailed"));
     },
   });
 
@@ -576,7 +593,9 @@ export function ImageChatPage() {
       }
       setDraft("");
       setSuccessMessage(
-        variables.generation_count > 1 ? `已提交生成任务 · ${variables.generation_count} 张候选` : "已提交生成任务",
+        variables.generation_count > 1
+          ? t("chat.submittedCount", { count: variables.generation_count })
+          : t("chat.submitted"),
       );
       setErrorMessage("");
     },
@@ -585,7 +604,7 @@ export function ImageChatPage() {
       if (duplicateSubmitGuardRef.current?.signature === signature) {
         duplicateSubmitGuardRef.current = null;
       }
-      setErrorMessage(error instanceof ApiError ? error.detail : "生成失败");
+      setErrorMessage(error instanceof ApiError ? error.detail : t("chat.generateFailed"));
     },
   });
 
@@ -600,11 +619,11 @@ export function ImageChatPage() {
         setSelectedTaskPlaceholderId(selectImageGenerationTaskNextPlaceholderId(retriedTask));
         setSelectedGeneratedAssetId(null);
       }
-      setSuccessMessage("已重新提交重试任务");
+      setSuccessMessage(t("chat.retrySubmitted"));
       setErrorMessage("");
     },
     onError: (error) => {
-      setErrorMessage(error instanceof ApiError ? error.detail : "重试失败");
+      setErrorMessage(error instanceof ApiError ? error.detail : t("chat.retryFailed"));
     },
   });
 
@@ -615,11 +634,11 @@ export function ImageChatPage() {
       queryClient.setQueryData(["image-session", updated.id], updated);
       void queryClient.invalidateQueries({ queryKey: ["image-session-status", updated.id] });
       void queryClient.invalidateQueries({ queryKey: ["image-sessions", productId ?? "standalone"] });
-      setSuccessMessage("已取消生成任务");
+      setSuccessMessage(t("chat.cancelledTask"));
       setErrorMessage("");
     },
     onError: (error) => {
-      setErrorMessage(error instanceof ApiError ? error.detail : "取消失败");
+      setErrorMessage(error instanceof ApiError ? error.detail : t("chat.cancelFailed"));
     },
   });
 
@@ -639,19 +658,19 @@ export function ImageChatPage() {
       await queryClient.invalidateQueries({ queryKey: ["product", response.product_id] });
     },
     onError: (error) => {
-      setErrorMessage(error instanceof ApiError ? error.detail : "保存到商品失败");
+      setErrorMessage(error instanceof ApiError ? error.detail : t("chat.saveProductFailed"));
     },
   });
 
   const saveGalleryMutation = useMutation({
     mutationFn: (assetId: string) => api.saveGalleryEntry(assetId),
     onSuccess: async () => {
-      setSuccessMessage("已保存至画廊");
+      setSuccessMessage(t("chat.savedGallery"));
       setErrorMessage("");
       await queryClient.invalidateQueries({ queryKey: ["gallery"] });
     },
     onError: (error) => {
-      setErrorMessage(error instanceof ApiError ? error.detail : "保存到画廊失败");
+      setErrorMessage(error instanceof ApiError ? error.detail : t("chat.saveGalleryFailed"));
     },
   });
 
@@ -663,11 +682,11 @@ export function ImageChatPage() {
       if (selectedSessionId) {
         await queryClient.invalidateQueries({ queryKey: ["image-session", selectedSessionId] });
       }
-      setSuccessMessage("商品参考图已删除");
+      setSuccessMessage(t("chat.productReferenceDeleted"));
       setErrorMessage("");
     },
     onError: (error) => {
-      setErrorMessage(error instanceof ApiError ? error.detail : "商品参考图删除失败");
+      setErrorMessage(error instanceof ApiError ? error.detail : t("chat.productReferenceDeleteFailed"));
     },
   });
 
@@ -703,7 +722,7 @@ export function ImageChatPage() {
         DUPLICATE_GENERATION_SUBMIT_WINDOW_MS,
       )
     ) {
-      setErrorMessage("相同任务刚刚提交，稍等片刻即可在历史记录中查看状态。");
+      setErrorMessage(t("chat.duplicateSubmit"));
       return;
     }
     duplicateSubmitGuardRef.current = { signature, submittedAt: now };
@@ -744,7 +763,7 @@ export function ImageChatPage() {
       return;
     }
     if (!isProductMode && !targetProductId) {
-      setErrorMessage("请先选择要保存到的商品");
+      setErrorMessage(t("chat.selectProductFirst"));
       return;
     }
     attachMutation.mutate({
@@ -766,10 +785,10 @@ export function ImageChatPage() {
       return;
     }
     if (!deletionEnabled) {
-      setErrorMessage(DELETION_DISABLED_MESSAGE);
+      setErrorMessage(t("chat.deleteDisabled"));
       return;
     }
-    if (!window.confirm("删除这个会话？会话里的参考图和生成记录都会移除，已保存到商品的图片不受影响。")) {
+    if (!window.confirm(t("chat.confirmDeleteSession"))) {
       return;
     }
     deleteSessionMutation.mutate(sessionId);
@@ -779,7 +798,7 @@ export function ImageChatPage() {
     if (deleteProductReferenceMutation.isPending) {
       return;
     }
-    if (!window.confirm("删除这张商品参考图？后续生成将不再参考它。")) {
+    if (!window.confirm(t("chat.confirmDeleteProductReference"))) {
       return;
     }
     deleteProductReferenceMutation.mutate(assetId);
@@ -800,7 +819,7 @@ export function ImageChatPage() {
     if (!selectedSessionId || deleteSessionReferenceMutation.isPending) {
       return;
     }
-    if (!window.confirm("删除这张会话参考图？已生成的历史记录不受影响。")) {
+    if (!window.confirm(t("chat.confirmDeleteSessionReference"))) {
       return;
     }
     deleteSessionReferenceMutation.mutate({ sessionId: selectedSessionId, assetId });
@@ -857,9 +876,9 @@ export function ImageChatPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-100 text-slate-900 lg:h-screen lg:overflow-hidden">
+    <div className="flex min-h-screen flex-col bg-slate-100 text-slate-900 dark:bg-slate-950 lg:h-screen lg:overflow-hidden">
       <TopNav
-        breadcrumbs={isProductMode ? `${productQuery.data?.name ?? "商品"} / 文/图生图` : "文/图生图"}
+        breadcrumbs={isProductMode ? `${productQuery.data?.name ?? t("chat.productFallback")} / ${t("chat.breadcrumb")}` : t("chat.breadcrumb")}
         onHome={() => navigate(isProductMode && productId ? `/products/${productId}` : "/products")}
         onLogout={() => logoutMutation.mutate()}
       />
@@ -871,8 +890,8 @@ export function ImageChatPage() {
         >
           <button
             type="button"
-            aria-label="调整会话列表宽度"
-            title="拖拽调整会话列表宽度"
+            aria-label={t("chat.resizeSessions")}
+            title={t("chat.resizeSessionsTitle")}
             onPointerDown={(event) => handlePanelResizeStart("left", event)}
             className="absolute right-[-5px] top-0 z-20 hidden h-full w-3 cursor-col-resize items-center justify-center transition-colors hover:bg-indigo-50/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 lg:flex"
           >
@@ -881,15 +900,15 @@ export function ImageChatPage() {
           <div className="border-b border-slate-200 px-4 py-4">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <div className="text-sm font-semibold text-slate-950">会话列表</div>
-                <div className="mt-1 text-xs text-slate-500">{sessionItems.length} 个</div>
+                <div className="text-sm font-semibold text-slate-950">{t("chat.sessions")}</div>
+                <div className="mt-1 text-xs text-slate-500">{t("chat.count", { count: sessionItems.length })}</div>
               </div>
               <button
                 type="button"
                 onClick={() => createSessionMutation.mutate()}
                 disabled={createSessionMutation.isPending}
                 className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm shadow-indigo-500/20 transition-colors hover:bg-indigo-500 disabled:opacity-60"
-                aria-label="新建会话"
+                aria-label={t("chat.newSession")}
               >
                 {createSessionMutation.isPending ? <Loader2 size={15} className="animate-spin" /> : <Plus size={16} />}
               </button>
@@ -939,17 +958,17 @@ export function ImageChatPage() {
                         </div>
                         <div className="mt-1 flex items-center gap-1.5 text-[11px] text-slate-500">
                           <History size={11} />
-                          <span>{item.rounds_count} 轮</span>
+                          <span>{t("chat.roundCount", { count: item.rounds_count })}</span>
                         </div>
                         <div className="mt-0.5 truncate text-[11px] text-slate-400">{formatDateTime(item.updated_at)}</div>
                       </div>
                     </button>
                     <button
                       type="button"
-                      aria-label="删除会话"
+                      aria-label={t("chat.deleteSession")}
                       onClick={() => handleDeleteSession(item.id)}
                       disabled={deleting || !deletionEnabled}
-                      title={deletionEnabled ? "删除会话" : DELETION_DISABLED_MESSAGE}
+                      title={deletionEnabled ? t("chat.deleteSession") : t("chat.deleteDisabled")}
                       className="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-lg bg-white/95 text-slate-400 opacity-100 shadow-sm ring-1 ring-slate-200 transition-colors hover:text-red-600 disabled:opacity-60 md:opacity-0 md:group-hover:opacity-100"
                     >
                       {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
@@ -959,7 +978,7 @@ export function ImageChatPage() {
               })
             ) : (
               <div className="rounded-2xl border border-dashed border-slate-200 p-5 text-center text-sm text-slate-500">
-                暂无会话
+                {t("chat.noSessions")}
               </div>
             )}
           </div>
@@ -971,24 +990,24 @@ export function ImageChatPage() {
               <div className="min-w-0">
                 <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
                   <span className="inline-flex h-7 items-center rounded-full bg-white px-3 shadow-sm ring-1 ring-slate-200">
-                    当前结果
+                    {t("chat.currentResult")}
                   </span>
                   {branchBaseRound ? (
                     <span className="inline-flex h-7 items-center gap-1 rounded-full bg-indigo-600 px-3 text-white shadow-sm shadow-indigo-500/20">
-                      <Layers3 size={12} /> 已选基图
+                      <Layers3 size={12} /> {t("chat.baseSelected")}
                     </span>
                   ) : null}
                 </div>
                 <h1 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">
-                  {imageSession?.title ?? "文/图生图工作台"}
+                  {imageSession?.title ?? t("chat.workbench")}
                 </h1>
                 {selectedRound ? (
                   <div className="mt-1 text-xs font-medium text-slate-500 md:hidden">
-                    {imageRoundSizeLabel(selectedRound)} · 候选 {selectedRound.candidate_index}/{selectedRound.candidate_count}
+                    {imageRoundSizeLabel(selectedRound, t)} · {t("chat.candidate", { index: selectedRound.candidate_index, count: selectedRound.candidate_count })}
                   </div>
                 ) : selectedPlaceholder ? (
                   <div className="mt-1 text-xs font-medium text-slate-500 md:hidden">
-                    {placeholderStatusLabel(selectedPlaceholder)} · 候选 {selectedPlaceholder.candidate_index}/{selectedPlaceholder.candidate_count}
+                    {placeholderStatusLabel(selectedPlaceholder, t)} · {t("chat.candidate", { index: selectedPlaceholder.candidate_index, count: selectedPlaceholder.candidate_count })}
                   </div>
                 ) : null}
               </div>
@@ -996,14 +1015,14 @@ export function ImageChatPage() {
                 {selectedRound ? (
                   <>
                     <span className="hidden rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-600 shadow-sm md:inline-flex">
-                      {imageRoundSizeLabel(selectedRound)} · 候选 {selectedRound.candidate_index}/{selectedRound.candidate_count}
+                      {imageRoundSizeLabel(selectedRound, t)} · {t("chat.candidate", { index: selectedRound.candidate_index, count: selectedRound.candidate_count })}
                     </span>
                     <a
                       href={api.toApiUrl(selectedRound.generated_asset.download_url)}
                       target="_blank"
                       rel="noreferrer"
-                      title="下载当前图片"
-                      aria-label="下载当前图片"
+                      title={t("chat.downloadCurrent")}
+                      aria-label={t("chat.downloadCurrent")}
                       className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition-colors hover:border-indigo-200 hover:text-indigo-700"
                     >
                       <Download size={15} />
@@ -1012,8 +1031,8 @@ export function ImageChatPage() {
                       type="button"
                       onClick={handleSaveSelectedToGallery}
                       disabled={saveGalleryMutation.isPending}
-                      title="将当前选中的生成候选保存到全局画廊"
-                      aria-label="将当前选中的生成候选保存到全局画廊"
+                      title={t("chat.saveSelectedGallery")}
+                      aria-label={t("chat.saveSelectedGallery")}
                       className="inline-flex h-10 shrink-0 items-center justify-center rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white shadow-sm shadow-indigo-500/20 ring-1 ring-indigo-500 transition-colors hover:bg-indigo-700 disabled:opacity-60"
                     >
                       {saveGalleryMutation.isPending ? (
@@ -1021,12 +1040,12 @@ export function ImageChatPage() {
                       ) : (
                         <GalleryHorizontalEnd size={16} className="mr-2" />
                       )}
-                      投至画廊
+                      {t("chat.sendGallery")}
                     </button>
                   </>
                 ) : selectedPlaceholder ? (
                   <span className={`rounded-full border px-3 py-1.5 text-xs font-medium shadow-sm ${placeholderStatusClass(selectedPlaceholder)}`}>
-                    {placeholderStatusLabel(selectedPlaceholder)}
+                    {placeholderStatusLabel(selectedPlaceholder, t)}
                   </span>
                 ) : null}
               </div>
@@ -1041,17 +1060,17 @@ export function ImageChatPage() {
                   </div>
                 ) : selectedPlaceholder ? (
                   <div className="min-w-0 max-w-[calc(100%-5.5rem)] truncate rounded-full bg-white/90 px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm ring-1 ring-slate-200 backdrop-blur">
-                    {placeholderStatusLabel(selectedPlaceholder)} · {formatImageSizeValue(selectedPlaceholder.size)}
+                    {placeholderStatusLabel(selectedPlaceholder, t)} · {formatImageSizeValue(selectedPlaceholder.size)}
                   </div>
                 ) : (
                   <div className="rounded-full bg-white/90 px-3 py-1.5 text-xs font-medium text-slate-500 shadow-sm ring-1 ring-slate-200 backdrop-blur">
-                    等待第一张结果
+                    {t("chat.waitingFirstResult")}
                   </div>
                 )}
                 {branchBaseRound ? (
                   <div className="inline-flex h-8 items-center gap-1.5 rounded-full bg-indigo-600 px-3 text-xs font-semibold text-white shadow-sm shadow-indigo-500/20">
                     <Layers3 size={13} />
-                    已选基图
+                    {t("chat.baseSelected")}
                   </div>
                 ) : null}
               </div>
@@ -1060,7 +1079,7 @@ export function ImageChatPage() {
                 <div className="relative z-0 flex h-full min-h-0 w-full items-center justify-center px-2 pb-2 pt-12 sm:px-3 sm:pb-3 sm:pt-14">
                   <img
                     src={api.toApiUrl(selectedRound.generated_asset.download_url)}
-                    alt="当前结果"
+                    alt={t("chat.currentResultAlt")}
                     decoding="async"
                     className="max-h-full max-w-full object-contain drop-shadow-2xl"
                   />
@@ -1078,6 +1097,7 @@ export function ImageChatPage() {
                   }
                   onRetry={handleRetryGenerationTask}
                   onCancel={handleCancelGenerationTask}
+                  t={t}
                 />
               ) : (
                 <div className="relative z-0 flex flex-col items-center gap-4 text-center text-slate-400">
@@ -1085,7 +1105,7 @@ export function ImageChatPage() {
                     <Sparkles size={28} />
                   </div>
                   <div>
-                    <div className="text-sm font-semibold text-slate-600">还没有结果</div>
+                    <div className="text-sm font-semibold text-slate-600">{t("chat.noResult")}</div>
                   </div>
                 </div>
               )}
@@ -1115,8 +1135,8 @@ export function ImageChatPage() {
           >
             <button
               type="button"
-              aria-label="调整历史记录高度"
-              title="拖拽调整历史记录高度"
+              aria-label={t("chat.resizeHistory")}
+              title={t("chat.resizeHistoryTitle")}
               onPointerDown={(event) => handlePanelResizeStart("history", event)}
               className="absolute inset-x-0 -top-1 z-20 hidden h-3 cursor-row-resize items-center justify-center transition-colors hover:bg-indigo-50/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 lg:flex"
             >
@@ -1124,9 +1144,9 @@ export function ImageChatPage() {
             </button>
             <div className="mb-2 flex items-center justify-between gap-3">
               <div>
-                <div className="text-sm font-semibold text-slate-950">历史记录</div>
+                <div className="text-sm font-semibold text-slate-950">{t("chat.history")}</div>
               </div>
-              {branchBaseRound ? <div className="text-xs font-medium text-indigo-700">点击历史图可切换基图</div> : null}
+              {branchBaseRound ? <div className="text-xs font-medium text-indigo-700">{t("chat.clickHistoryBase")}</div> : null}
             </div>
 
             {historyBranches.length ? (
@@ -1150,12 +1170,13 @@ export function ImageChatPage() {
                       setSelectedGeneratedAssetId(null);
                     }}
                     onPreviewPrompt={setPromptPreview}
+                    t={t}
                   />
                 ))}
               </div>
             ) : (
               <div className="flex min-h-0 flex-1 items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-sm text-slate-400">
-                生成结果会出现在这里
+                {t("chat.resultsAppearHere")}
               </div>
             )}
           </div>
@@ -1167,8 +1188,8 @@ export function ImageChatPage() {
         >
           <button
             type="button"
-            aria-label="调整生成设置宽度"
-            title="拖拽调整生成设置宽度"
+            aria-label={t("chat.resizeSettings")}
+            title={t("chat.resizeSettingsTitle")}
             onPointerDown={(event) => handlePanelResizeStart("right", event)}
             className="absolute left-[-5px] top-0 z-20 hidden h-full w-3 cursor-col-resize items-center justify-center transition-colors hover:bg-indigo-50/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 lg:flex"
           >
@@ -1179,7 +1200,7 @@ export function ImageChatPage() {
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div>
                   <div className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-950">
-                    <Settings size={15} /> 生成设置
+                    <Settings size={15} /> {t("chat.generationSettings")}
                   </div>
                 </div>
                 <button
@@ -1187,7 +1208,7 @@ export function ImageChatPage() {
                   onClick={() => setRenameEnabled((current) => !current)}
                   className="inline-flex h-8 items-center rounded-lg border border-slate-200 px-2.5 text-xs font-medium text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-900"
                 >
-                  <Pencil size={12} className="mr-1.5" /> 重命名
+                  <Pencil size={12} className="mr-1.5" /> {t("chat.rename")}
                 </button>
               </div>
               <div className="flex gap-2">
@@ -1202,7 +1223,7 @@ export function ImageChatPage() {
                     type="button"
                     onClick={handleRename}
                     className="inline-flex items-center rounded-xl bg-indigo-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-500"
-                    aria-label="保存会话名称"
+                    aria-label={t("chat.saveSessionName")}
                   >
                     {renameSessionMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                   </button>
@@ -1230,6 +1251,7 @@ export function ImageChatPage() {
                     onTargetProductChange={setTargetProductId}
                     onDeleteReference={handleDeleteProductReference}
                     onAttach={handleAttach}
+                    t={t}
                   />
 
                   <SessionReferencePanel
@@ -1246,18 +1268,19 @@ export function ImageChatPage() {
                     onFiles={handleUploadReferenceFiles}
                     onToggle={handleReferenceToggle}
                     onDelete={handleDeleteSessionReference}
+                    t={t}
                   />
 
                   <div>
                     <label className="mb-2 block text-sm font-semibold text-slate-950" htmlFor="image-chat-prompt">
-                      画面描述
+                      {t("chat.prompt")}
                     </label>
                     <textarea
                       id="image-chat-prompt"
                       value={draft}
                       onChange={(event) => setDraft(event.target.value)}
                       rows={6}
-                      placeholder={isProductMode ? "描述这一轮要在商品图上调整什么。" : "描述你想生成的画面。"}
+                      placeholder={isProductMode ? t("chat.productPromptPlaceholder") : t("chat.freePromptPlaceholder")}
                       className="w-full resize-none rounded-2xl border border-slate-200 px-3 py-3 text-sm leading-6 text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
                     />
                   </div>
@@ -1312,10 +1335,10 @@ export function ImageChatPage() {
                 <Sparkles size={15} className="mr-2" />
               )}
               {generateMutation.isPending
-                ? "提交中"
+                ? t("chat.submitting")
                 : generationCount > 1
-                  ? `开始生成 · ${generationCount} 张候选`
-                  : "开始生成"}
+                  ? t("chat.startGenerateCount", { count: generationCount })
+                  : t("chat.startGenerate")}
             </button>
           </div>
         </aside>
@@ -1334,18 +1357,20 @@ function GenerationCanvasPlaceholder({
   cancelling,
   onRetry,
   onCancel,
+  t,
 }: {
   candidate: ImageHistoryPlaceholderCandidate;
   retrying: boolean;
   cancelling: boolean;
   onRetry: (task: ImageSessionGenerationTask) => void;
   onCancel: (task: ImageSessionGenerationTask) => void;
+  t: ReturnType<typeof useI18n>["t"];
 }) {
   const active = candidate.status === "queued" || candidate.status === "running";
   const failed = candidate.status === "failed";
   const cancelled = candidate.status === "cancelled";
   const retryable = isImageSessionGenerationTaskRetryable(candidate.task);
-  const queueText = generationTaskQueueText(candidate.task);
+  const queueText = generationTaskQueueText(candidate.task, t);
 
   return (
     <div className="relative z-0 flex h-full min-h-0 w-full items-center justify-center px-6 pb-6 pt-16">
@@ -1358,9 +1383,9 @@ function GenerationCanvasPlaceholder({
           {active ? <div className="absolute inset-2 rounded-3xl bg-indigo-200/70 opacity-70 blur-xl animate-pulse" /> : null}
           {active ? <Loader2 size={30} className="relative animate-spin" /> : <Sparkles size={30} className="relative" />}
         </div>
-        <div className="mt-4 text-sm font-semibold text-slate-900">{placeholderStatusLabel(candidate)}</div>
+        <div className="mt-4 text-sm font-semibold text-slate-900">{placeholderStatusLabel(candidate, t)}</div>
         <div className="mt-1 text-xs text-slate-500">
-          候选 {candidate.candidate_index}/{candidate.candidate_count} · {formatImageSizeValue(candidate.size)}
+          {t("chat.candidate", { index: candidate.candidate_index, count: candidate.candidate_count })} · {formatImageSizeValue(candidate.size)}
         </div>
         {queueText ? <div className="mt-3 max-w-sm text-xs leading-5 text-slate-500">{queueText}</div> : null}
         <div className="mt-4 line-clamp-3 max-w-sm text-xs leading-5 text-slate-600">{candidate.prompt}</div>
@@ -1372,7 +1397,7 @@ function GenerationCanvasPlaceholder({
             className="mt-5 inline-flex items-center justify-center rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-600 shadow-sm transition-colors hover:bg-red-50 disabled:opacity-60"
           >
             {cancelling ? <Loader2 size={15} className="mr-2 animate-spin" /> : <OctagonX size={15} className="mr-2" />}
-            取消生成
+            {t("chat.cancelGeneration")}
           </button>
         ) : null}
         {failed && retryable ? (
@@ -1383,15 +1408,15 @@ function GenerationCanvasPlaceholder({
             className="mt-5 inline-flex items-center justify-center rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-red-500/20 transition-colors hover:bg-red-500 disabled:opacity-60"
           >
             {retrying ? <Loader2 size={15} className="mr-2 animate-spin" /> : <RotateCcw size={15} className="mr-2" />}
-            重试生成
+            {t("chat.retryGeneration")}
           </button>
         ) : failed ? (
           <div className="mt-5 rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-medium text-red-500">
-            该失败任务不可重试
+            {t("chat.notRetryable")}
           </div>
         ) : cancelled ? (
           <div className="mt-5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-500">
-            任务已取消
+            {t("chat.taskCancelled")}
           </div>
         ) : null}
       </div>
@@ -1407,6 +1432,7 @@ function HistoryBranchStrip({
   onSelectRound,
   onSelectPlaceholder,
   onPreviewPrompt,
+  t,
 }: {
   branch: ImageHistoryBranch;
   selectedGeneratedAssetId: string | null;
@@ -1415,9 +1441,10 @@ function HistoryBranchStrip({
   onSelectRound: (assetId: string) => void;
   onSelectPlaceholder: (placeholderId: string) => void;
   onPreviewPrompt: (preview: PromptPreview) => void;
+  t: ReturnType<typeof useI18n>["t"];
 }) {
   const depthOffset = Math.min(branch.depth, 4) * 18;
-  const branchLabel = branch.base_asset_id ? `分支 ${branch.depth}` : "首轮";
+  const branchLabel = branch.base_asset_id ? t("chat.branch", { depth: branch.depth }) : t("chat.firstRound");
 
   return (
     <div
@@ -1433,15 +1460,15 @@ function HistoryBranchStrip({
             {branch.depth > 0 ? <Layers3 size={12} /> : <History size={12} />}
             {branchLabel}
           </div>
-          <div className="mt-1">{branch.candidates.length} 张</div>
+          <div className="mt-1">{t("chat.imageCount", { count: branch.candidates.length })}</div>
         </div>
         <button
           type="button"
           onClick={() =>
             onPreviewPrompt({
-              title: branch.base_asset_id ? "分支 Prompt" : "首轮 Prompt",
+              title: branch.base_asset_id ? t("chat.branchPrompt") : t("chat.firstPrompt"),
               text: branch.prompt,
-              meta: `${branch.candidates.length} 张 · ${formatDateTime(branch.created_at)}`,
+              meta: `${t("chat.imageCount", { count: branch.candidates.length })} · ${formatDateTime(branch.created_at)}`,
             })
           }
           className="line-clamp-3 rounded-md text-left text-[11px] leading-4 text-slate-400 transition-colors hover:text-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
@@ -1458,6 +1485,7 @@ function HistoryBranchStrip({
           branchBaseAssetId={branchBaseAssetId}
           onSelectRound={onSelectRound}
           onSelectPlaceholder={onSelectPlaceholder}
+          t={t}
         />
       ))}
     </div>
@@ -1471,6 +1499,7 @@ function HistoryCandidateCard({
   branchBaseAssetId,
   onSelectRound,
   onSelectPlaceholder,
+  t,
 }: {
   candidate: ImageHistoryCandidate;
   selectedGeneratedAssetId: string | null;
@@ -1478,6 +1507,7 @@ function HistoryCandidateCard({
   branchBaseAssetId: string | null;
   onSelectRound: (assetId: string) => void;
   onSelectPlaceholder: (placeholderId: string) => void;
+  t: ReturnType<typeof useI18n>["t"];
 }) {
   if (candidate.kind === "placeholder") {
     const active = candidate.id === selectedTaskPlaceholderId;
@@ -1505,7 +1535,7 @@ function HistoryCandidateCard({
             </div>
           </div>
           <div>
-            <div className="truncate text-[11px] font-semibold text-slate-700">{placeholderStatusLabel(candidate)}</div>
+            <div className="truncate text-[11px] font-semibold text-slate-700">{placeholderStatusLabel(candidate, t)}</div>
             <div className="mt-0.5 line-clamp-2 text-[10px] leading-3 text-slate-400">{candidate.prompt}</div>
           </div>
         </button>
@@ -1533,7 +1563,7 @@ function HistoryCandidateCard({
         <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/85 via-slate-950/35 to-transparent p-1.5 pt-8 text-white">
           <div className="flex items-center justify-between gap-2 text-[11px] font-medium">
             <span className="min-w-0 truncate">
-              {round.candidate_count > 1 ? `${round.candidate_index}/${round.candidate_count}` : imageRoundSizeLabel(round)}
+              {round.candidate_count > 1 ? `${round.candidate_index}/${round.candidate_count}` : imageRoundSizeLabel(round, t)}
             </span>
             {active ? <Check size={13} className="shrink-0" /> : null}
           </div>
@@ -1541,7 +1571,7 @@ function HistoryCandidateCard({
       </button>
       {asBase ? (
         <div className="absolute left-1.5 top-1.5 max-w-[calc(100%-2.75rem)] truncate rounded-full bg-indigo-600 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow-sm">
-          基图
+          {t("chat.baseImage")}
         </div>
       ) : null}
     </div>
@@ -1558,6 +1588,7 @@ function SessionReferencePanel({
   onFiles,
   onToggle,
   onDelete,
+  t,
 }: {
   assets: ImageSessionAsset[];
   selectedAssetIds: string[];
@@ -1568,12 +1599,13 @@ function SessionReferencePanel({
   onFiles: (files: File[]) => void;
   onToggle: (assetId: string, checked: boolean) => void;
   onDelete: (assetId: string) => void;
+  t: ReturnType<typeof useI18n>["t"];
 }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4">
-      <div className="mb-2 text-sm font-semibold text-slate-950">会话参考图</div>
+      <div className="mb-2 text-sm font-semibold text-slate-950">{t("chat.sessionReferences")}</div>
       <ImageDropZone
-        ariaLabel="上传会话参考图"
+        ariaLabel={t("chat.uploadSessionReference")}
         multiple
         disabled={disabled || uploadBusy}
         className="flex cursor-pointer items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-600 transition-colors hover:border-indigo-300 hover:bg-indigo-50/40"
@@ -1582,12 +1614,12 @@ function SessionReferencePanel({
         {({ isDragging }) => (
           <>
             {uploadBusy ? <Loader2 size={16} className="mr-2 animate-spin" /> : <ImagePlus size={16} className="mr-2" />}
-            {isDragging ? "松开上传" : "上传参考图"}
+            {isDragging ? t("chat.dropUpload") : t("chat.uploadReference")}
           </>
         )}
       </ImageDropZone>
       <div className="mt-2 text-xs leading-5 text-slate-500">
-        已选 {selectedAssetIds.length}/{maxSelectedCount}
+        {t("chat.selectedReferences", { selected: selectedAssetIds.length, max: maxSelectedCount })}
       </div>
       {assets.length ? (
         <div className="mt-3 grid grid-cols-4 gap-2">
@@ -1619,11 +1651,11 @@ function SessionReferencePanel({
                     onChange={(event) => onToggle(asset.id, event.target.checked)}
                     className="mr-1 h-3 w-3 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                   />
-                  用
+                  {t("chat.useReference")}
                 </label>
                 <button
                   type="button"
-                  aria-label="删除会话参考图"
+                  aria-label={t("chat.deleteSessionReference")}
                   onClick={() => onDelete(asset.id)}
                   disabled={deleting}
                   className="absolute right-1 top-1 inline-flex h-7 w-7 items-center justify-center rounded-lg bg-white/90 text-slate-500 opacity-100 shadow-sm ring-1 ring-slate-200 transition-colors hover:text-red-600 disabled:opacity-60 md:opacity-0 md:group-hover:opacity-100"
@@ -1652,6 +1684,7 @@ function ProductAssociationPanel({
   onTargetProductChange,
   onDeleteReference,
   onAttach,
+  t,
 }: {
   isProductMode: boolean;
   product: ProductDetail | undefined;
@@ -1665,19 +1698,20 @@ function ProductAssociationPanel({
   onTargetProductChange: (value: string) => void;
   onDeleteReference: (assetId: string) => void;
   onAttach: (target: "reference" | "main_source") => void;
+  t: ReturnType<typeof useI18n>["t"];
 }) {
   const saveDisabled = attachBusy || !selectedRound || (!isProductMode && !targetProductId);
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-      <div className="mb-3 text-sm font-semibold text-zinc-900">保存至商品库</div>
+      <div className="mb-3 text-sm font-semibold text-zinc-900">{t("chat.saveToProduct")}</div>
       {isProductMode ? (
         product ? (
           <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-3">
             <ProductThumbnail sourceImage={sourceImage} alt={product.name} />
             <div className="min-w-0 self-center">
               <div className="truncate text-sm font-medium text-zinc-900">{product.name}</div>
-              <div className="mt-1 text-xs text-zinc-500">当前参考图 {referenceImages.length} 张</div>
+              <div className="mt-1 text-xs text-zinc-500">{t("chat.productReferenceCount", { count: referenceImages.length })}</div>
             </div>
           </div>
         ) : (
@@ -1687,13 +1721,13 @@ function ProductAssociationPanel({
         )
       ) : (
         <label className="block">
-          <span className="mb-1.5 block text-xs font-semibold text-slate-700">目标商品</span>
+          <span className="mb-1.5 block text-xs font-semibold text-slate-700">{t("chat.targetProduct")}</span>
           <select
             value={targetProductId}
             onChange={(event) => onTargetProductChange(event.target.value)}
             className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
           >
-            {products.length ? null : <option value="">暂无商品</option>}
+            {products.length ? null : <option value="">{t("chat.noProducts")}</option>}
             {products.map((item) => (
               <option key={item.id} value={item.id}>
                 {item.name}
@@ -1720,7 +1754,7 @@ function ProductAssociationPanel({
                 </a>
                 <button
                   type="button"
-                  aria-label="删除商品参考图"
+                  aria-label={t("chat.deleteProductReference")}
                   onClick={() => onDeleteReference(asset.id)}
                   disabled={deleting}
                   className="absolute right-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded bg-white/90 text-zinc-500 opacity-100 shadow-sm ring-1 ring-zinc-200 transition-colors hover:text-red-600 disabled:opacity-60 md:opacity-0 md:group-hover:opacity-100"
@@ -1736,11 +1770,11 @@ function ProductAssociationPanel({
       <div className="mt-4 border-t border-slate-200 pt-3">
         {selectedRound ? (
           <div className="mb-2 text-[11px] leading-5 text-slate-500">
-            当前选中候选：{formatImageSizeValue(selectedRound.size)}
+            {t("chat.selectedCandidate", { size: formatImageSizeValue(selectedRound.size) })}
           </div>
         ) : (
           <div className="mb-2 rounded-xl border border-dashed border-slate-200 bg-white px-3 py-2 text-center text-sm text-slate-400">
-            先从历史记录中选择一张图片
+            {t("chat.selectHistoryFirst")}
           </div>
         )}
         <div className="grid gap-2">
@@ -1751,7 +1785,7 @@ function ProductAssociationPanel({
             className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:border-slate-300 hover:text-slate-950 disabled:opacity-60"
           >
             {attachBusy ? <Loader2 size={14} className="mr-2 animate-spin" /> : <Check size={14} className="mr-2" />}
-            {isProductMode ? "加入参考图" : "保存为参考图"}
+            {isProductMode ? t("chat.addReference") : t("chat.saveAsReference")}
           </button>
           {isProductMode ? (
             <button
@@ -1761,7 +1795,7 @@ function ProductAssociationPanel({
               className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:opacity-60"
             >
               {attachBusy ? <Loader2 size={14} className="mr-2 animate-spin" /> : <ImageIcon size={14} className="mr-2" />}
-              设为商品主图
+              {t("chat.setMainSource")}
             </button>
           ) : null}
         </div>

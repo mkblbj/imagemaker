@@ -3,15 +3,9 @@ import { FileText, Loader2, RotateCcw, Layers3 } from "lucide-react";
 
 import { PromptPreviewDialog, type PromptPreview } from "../../components/PromptPreviewDialog";
 import { formatDateTime } from "../../lib/format";
+import { useI18n } from "../../lib/preferences";
 import type { ProductWorkflow, WorkflowRun, WorkflowRunStatus } from "../../lib/types";
 import { outputText } from "./utils";
-
-const RUN_STATUS_LABELS: Record<WorkflowRunStatus, string> = {
-  running: "运行中",
-  succeeded: "成功",
-  failed: "失败",
-  cancelled: "已取消",
-};
 
 const RUN_STATUS_CLASS_NAMES: Record<WorkflowRunStatus, string> = {
   running: "border-blue-200 bg-blue-50 text-blue-700",
@@ -34,12 +28,17 @@ interface RunsPanelProps {
   onRetryRun: (run: WorkflowRun) => void;
 }
 
-function workflowRunQueueText(run: WorkflowRun): string {
+function workflowRunQueueText(run: WorkflowRun, t: ReturnType<typeof useI18n>["t"]): string {
   if (run.queue_position) {
-    return `排队第 ${run.queue_position} 位，前方 ${run.queued_ahead_count ?? 0} 个；全局活跃 ${run.queue_active_count}/${run.queue_max_concurrent_tasks}。`;
+    return t("detail.runQueuedText", {
+      position: run.queue_position,
+      ahead: run.queued_ahead_count ?? 0,
+      active: run.queue_active_count,
+      max: run.queue_max_concurrent_tasks,
+    });
   }
   if (run.status === "running") {
-    return `全局运行 ${run.queue_running_count} 个，排队 ${run.queue_queued_count} 个。`;
+    return t("detail.runRunningText", { running: run.queue_running_count, queued: run.queue_queued_count });
   }
   return "";
 }
@@ -68,17 +67,18 @@ function imagePromptItems(
 }
 
 export function RunsPanel({ workflow, latestRun, busyRunId, onRetryRun }: RunsPanelProps) {
+  const { t } = useI18n();
   const [promptPreview, setPromptPreview] = useState<PromptPreview | null>(null);
 
   return (
     <section>
       <div className="mb-3 flex items-center justify-between">
         <div className="text-xs text-zinc-500">
-          {workflow?.runs.length ? `共 ${workflow.runs.length} 次运行` : "暂无运行历史"}
+          {workflow?.runs.length ? t("detail.runsCount", { count: workflow.runs.length }) : t("detail.noRunHistory")}
         </div>
         {latestRun ? (
           <div className="rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-[11px] text-zinc-500">
-            最近 {formatDateTime(latestRun.started_at)}
+            {t("detail.latest", { time: formatDateTime(latestRun.started_at) })}
           </div>
         ) : null}
       </div>
@@ -86,7 +86,7 @@ export function RunsPanel({ workflow, latestRun, busyRunId, onRetryRun }: RunsPa
         <div className="space-y-2">
           {workflow.runs.map((run) => {
             const promptItems = imagePromptItems(workflow, run);
-            const queueText = workflowRunQueueText(run);
+            const queueText = workflowRunQueueText(run, t);
             const runBusy = busyRunId === run.id;
             return (
               <div
@@ -103,11 +103,11 @@ export function RunsPanel({ workflow, latestRun, busyRunId, onRetryRun }: RunsPa
                         <span
                           className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${RUN_STATUS_CLASS_NAMES[run.status]}`}
                         >
-                          {RUN_STATUS_LABELS[run.status]}
+                          {t(`detail.runStatus.${run.status}`)}
                         </span>
                         <span className="inline-flex items-center text-[11px] text-zinc-500">
                           <Layers3 size={12} className="mr-1 text-zinc-400" />
-                          节点记录 {run.node_runs.length}
+                          {t("detail.nodeRunCount", { count: run.node_runs.length })}
                         </span>
                       </div>
                       {promptItems.length ? (
@@ -148,7 +148,7 @@ export function RunsPanel({ workflow, latestRun, busyRunId, onRetryRun }: RunsPa
                   <div className="flex shrink-0 flex-col items-end gap-2 text-right text-[10px] leading-relaxed text-zinc-400">
                     <div>
                       <div>{formatDateTime(run.started_at)}</div>
-                      {run.finished_at ? <div>完成 {formatDateTime(run.finished_at)}</div> : null}
+                      {run.finished_at ? <div>{t("detail.finished", { time: formatDateTime(run.finished_at) })}</div> : null}
                     </div>
                     {run.is_retryable ? (
                       <div className="flex items-center gap-1.5">
@@ -163,7 +163,7 @@ export function RunsPanel({ workflow, latestRun, busyRunId, onRetryRun }: RunsPa
                           ) : (
                             <RotateCcw size={12} className="mr-1" />
                           )}
-                          重试
+                          {t("detail.retry")}
                         </button>
                       </div>
                     ) : null}
@@ -175,7 +175,7 @@ export function RunsPanel({ workflow, latestRun, busyRunId, onRetryRun }: RunsPa
         </div>
       ) : (
         <div className="flex min-h-[160px] items-center justify-center rounded-xl border border-dashed border-zinc-200 bg-zinc-50/60 px-4 py-6 text-center text-xs text-zinc-500">
-          暂无运行记录
+          {t("detail.noRuns")}
         </div>
       )}
       {promptPreview ? (

@@ -14,6 +14,7 @@ from helpers import (
 from sqlalchemy import event
 
 from productflow_backend.application.canvas_templates import get_builtin_canvas_template
+from productflow_backend.application.product_workflow.templates import TEMPLATE_METADATA_CONFIG_KEY
 from productflow_backend.application.use_cases import (
     add_reference_images,
     create_product,
@@ -147,7 +148,14 @@ def test_product_create_materializes_full_canvas_template(configured_env: Path, 
                 and node.title == template_node.title
                 and node.position_x == template_node.position_x
                 and node.position_y == template_node.position_y
-                and node.config_json == template_node.config_json
+                and node.config_json == {
+                    **template_node.config_json,
+                    TEMPLATE_METADATA_CONFIG_KEY: {
+                        "source": "builtin",
+                        "template_key": template.key,
+                        "node_key": template_node.key,
+                    },
+                }
             ),
             None,
         )

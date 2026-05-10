@@ -14,12 +14,13 @@ import { StatusPill } from "../components/StatusPill";
 import { TopNav } from "../components/TopNav";
 import { api, ApiError } from "../lib/api";
 import { formatPrice, formatShortDate } from "../lib/format";
+import { useI18n } from "../lib/preferences";
 import type { ProductSummary } from "../lib/types";
 
 const PAGE_SIZE = 12;
-const DELETION_DISABLED_MESSAGE = "删除功能已关闭，请联系管理员";
 
 export function ProductListPage() {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
@@ -65,23 +66,23 @@ export function ProductListPage() {
       }
     },
     onError: (mutationError) => {
-      setDeleteError(mutationError instanceof ApiError ? mutationError.detail : "删除商品失败");
+      setDeleteError(mutationError instanceof ApiError ? mutationError.detail : t("products.deleteFailed"));
     },
   });
 
   const handleDeleteProduct = (productId: string, productName: string) => {
     if (!deletionEnabled) {
-      setDeleteError(DELETION_DISABLED_MESSAGE);
+      setDeleteError(t("products.deleteDisabled"));
       return;
     }
-    if (!window.confirm(`确定删除「${productName}」吗？此操作不可恢复。`)) {
+    if (!window.confirm(t("products.deleteConfirm", { name: productName }))) {
       return;
     }
     deleteProductMutation.mutate(productId);
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-50">
+    <div className="flex min-h-screen flex-col bg-slate-50 dark:bg-slate-950">
       <TopNav
         onHome={() => navigate("/products")}
         onLogout={() => logoutMutation.mutate()}
@@ -93,11 +94,11 @@ export function ProductListPage() {
             <div className="grid gap-8 p-6 md:grid-cols-[1.35fr_1fr] lg:p-7">
               <div>
                 <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-400">
-                  ProductFlow Workbench
+                  {t("products.heroEyebrow")}
                 </div>
-                <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">商品创作工作台</h1>
+                <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">{t("products.title")}</h1>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-                  从真实商品开始，整理资料、生成文案与图片。
+                  {t("products.description")}
                 </p>
                 <div className="mt-5 flex flex-wrap items-center gap-3">
                   <button
@@ -105,23 +106,23 @@ export function ProductListPage() {
                     onClick={() => navigate("/products/new")}
                     className="inline-flex items-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-indigo-600/20 transition-colors hover:bg-indigo-500"
                   >
-                    <Plus size={16} className="mr-1.5" /> 新建商品
+                    <Plus size={16} className="mr-1.5" /> {t("products.new")}
                   </button>
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-3 self-end">
-                <MetricCard label="商品总数" value={total} />
-                <MetricCard label="当前页文案就绪" value={copyReadyCount} />
-                <MetricCard label="当前页图片就绪" value={posterReadyCount} />
+                <MetricCard label={t("products.totalMetric")} value={total} />
+                <MetricCard label={t("products.copyReadyMetric")} value={copyReadyCount} />
+                <MetricCard label={t("products.posterReadyMetric")} value={posterReadyCount} />
               </div>
             </div>
           </section>
 
           <div className="flex items-end justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm shadow-slate-200/50">
             <div>
-              <h2 className="text-base font-semibold text-zinc-900">商品列表</h2>
+              <h2 className="text-base font-semibold text-zinc-900">{t("products.listTitle")}</h2>
               <p className="mt-1 text-sm text-zinc-500">
-                第 {page} / {totalPages} 页 · 共 {total} 个商品
+                {t("products.paginationSummary", { page, totalPages, total })}
               </p>
             </div>
             <Pagination page={page} totalPages={totalPages} onPageChange={setPage} disabled={productsQuery.isFetching} />
@@ -139,17 +140,17 @@ export function ProductListPage() {
             </div>
           ) : productsQuery.isError ? (
             <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              商品列表加载失败，请确认后端已启动。
+              {t("products.loadFailed")}
             </div>
           ) : products.length ? (
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm shadow-slate-200/50">
               <table className="w-full table-fixed border-collapse text-left text-sm">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50/70">
-                    <th className="w-[45%] px-5 py-3 font-medium text-zinc-500">商品素材</th>
-                    <th className="w-[18%] px-5 py-3 font-medium text-zinc-500">流程状态</th>
-                    <th className="w-[18%] px-5 py-3 font-medium text-zinc-500">最后更新</th>
-                    <th className="w-[19%] px-5 py-3 text-right font-medium text-zinc-500">操作</th>
+                    <th className="w-[45%] px-5 py-3 font-medium text-zinc-500">{t("products.table.product")}</th>
+                    <th className="w-[18%] px-5 py-3 font-medium text-zinc-500">{t("products.table.state")}</th>
+                    <th className="w-[18%] px-5 py-3 font-medium text-zinc-500">{t("products.table.updated")}</th>
+                    <th className="w-[19%] px-5 py-3 text-right font-medium text-zinc-500">{t("products.table.actions")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
@@ -194,17 +195,17 @@ export function ProductListPage() {
                               type="button"
                               onClick={() => handleDeleteProduct(product.id, product.name)}
                               disabled={deleteProductMutation.isPending || !deletionEnabled}
-                              title={deletionEnabled ? "删除商品" : DELETION_DISABLED_MESSAGE}
+                              title={deletionEnabled ? t("products.delete") : t("products.deleteDisabled")}
                               className="inline-flex items-center text-sm font-medium text-red-500 transition-colors hover:text-red-700 disabled:opacity-50"
                             >
-                              <Trash2 size={14} className="mr-1" /> 删除
+                              <Trash2 size={14} className="mr-1" /> {t("products.delete")}
                             </button>
                             <button
                               type="button"
                               onClick={() => navigate(`/products/${product.id}`)}
                               className="inline-flex items-center text-sm font-medium text-zinc-600 transition-colors hover:text-zinc-900"
                             >
-                              打开 <ArrowRight size={14} className="ml-1" />
+                              {t("products.open")} <ArrowRight size={14} className="ml-1" />
                             </button>
                           </div>
                         </td>
@@ -217,14 +218,14 @@ export function ProductListPage() {
           ) : (
             <div className="rounded-xl border border-dashed border-zinc-300 bg-white px-6 py-16 text-center">
               <ImageIcon className="mx-auto mb-3 text-zinc-300" size={32} />
-              <div className="font-medium text-zinc-900">还没有商品</div>
-              <p className="mt-1 text-sm text-zinc-500">上传第一张商品图后，就可以进入工作流生成图片。</p>
+              <div className="font-medium text-zinc-900">{t("products.emptyTitle")}</div>
+              <p className="mt-1 text-sm text-zinc-500">{t("products.emptyDescription")}</p>
               <button
                 type="button"
                 onClick={() => navigate("/products/new")}
                 className="mt-5 inline-flex items-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-indigo-600/20 hover:bg-indigo-500"
               >
-                <Plus size={16} className="mr-1.5" /> 新建商品
+                <Plus size={16} className="mr-1.5" /> {t("products.new")}
               </button>
             </div>
           )}
@@ -282,6 +283,7 @@ function Pagination({
   onPageChange: (page: number) => void;
   disabled: boolean;
 }) {
+  const { t } = useI18n();
   return (
     <div className="inline-flex items-center gap-2 rounded-lg border border-zinc-200 bg-white p-1 shadow-sm">
       <button
@@ -290,7 +292,7 @@ function Pagination({
         disabled={disabled || page <= 1}
         className="inline-flex items-center rounded-md px-2.5 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-50 disabled:opacity-40"
       >
-        <ArrowLeft size={13} className="mr-1" /> 上一页
+        <ArrowLeft size={13} className="mr-1" /> {t("pagination.previous")}
       </button>
       <span className="px-2 text-xs tabular-nums text-zinc-500">
         {page} / {totalPages}
@@ -301,7 +303,7 @@ function Pagination({
         disabled={disabled || page >= totalPages}
         className="inline-flex items-center rounded-md px-2.5 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-50 disabled:opacity-40"
       >
-        下一页 <ArrowRight size={13} className="ml-1" />
+        {t("pagination.next")} <ArrowRight size={13} className="ml-1" />
       </button>
     </div>
   );

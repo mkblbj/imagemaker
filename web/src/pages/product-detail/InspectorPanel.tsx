@@ -24,6 +24,8 @@ import { PromptPreviewDialog, type PromptPreview } from "../../components/Prompt
 import type { DownloadableImage } from "../../lib/image-downloads";
 import type { ImageSizeOption } from "../../lib/imageSizes";
 import { formatDateTime, formatPrice } from "../../lib/format";
+import type { TranslationKey, TranslationParams } from "../../lib/i18n";
+import { useI18n } from "../../lib/preferences";
 import type {
   CopyBlock,
   CopyPayloadV2,
@@ -41,11 +43,13 @@ import type { NodeConfigDraft, SaveStatus } from "./types";
 import { type WorkflowNodeRunActionState, outputText, statusClass, workflowNodeStatusLabel } from "./utils";
 import { TextArea } from "./TextArea";
 
-const SAVE_STATUS_LABELS: Record<SaveStatus, string> = {
-  idle: "自动保存",
-  saving: "保存中",
-  saved: "已保存",
-  failed: "保存失败",
+type TFunction = (key: TranslationKey, params?: TranslationParams) => string;
+
+const SAVE_STATUS_LABEL_KEYS: Record<SaveStatus, TranslationKey> = {
+  idle: "detail.inspector.saveIdle",
+  saving: "detail.inspector.saving",
+  saved: "detail.inspector.saved",
+  failed: "detail.inspector.saveFailed",
 };
 
 const SAVE_STATUS_CLASS_NAMES: Record<SaveStatus, string> = {
@@ -57,6 +61,19 @@ const SAVE_STATUS_CLASS_NAMES: Record<SaveStatus, string> = {
 
 const ADD_COPY_FIELD_BUTTON_CLASS_NAME =
   "inline-flex items-center gap-1 rounded-md border border-dashed border-zinc-200 px-2 py-1 text-[11px] font-medium text-zinc-500 transition-colors hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-700";
+
+const REFERENCE_ROLE_OPTIONS: Array<{ value: string; labelKey: TranslationKey }> = [
+  { value: "reference", labelKey: "detail.referenceRole.reference" },
+  { value: "style", labelKey: "detail.referenceRole.style" },
+  { value: "product_angle", labelKey: "detail.referenceRole.productAngle" },
+  { value: "main_image", labelKey: "detail.referenceRole.mainImage" },
+  { value: "sku_image", labelKey: "detail.referenceRole.skuImage" },
+  { value: "model_image", labelKey: "detail.referenceRole.modelImage" },
+  { value: "scene_image", labelKey: "detail.referenceRole.sceneImage" },
+  { value: "detail_image", labelKey: "detail.referenceRole.detailImage" },
+  { value: "campaign_image", labelKey: "detail.referenceRole.campaignImage" },
+  { value: "background", labelKey: "detail.referenceRole.background" },
+];
 
 interface InspectorPanelProps {
   product: ProductDetail;
@@ -99,6 +116,7 @@ export function InspectorPanel({
   runActionState,
   saveStatus,
 }: InspectorPanelProps) {
+  const { t } = useI18n();
   const [promptPreview, setPromptPreview] = useState<PromptPreview | null>(null);
   const icon = {
     product_context: FileText,
@@ -107,8 +125,8 @@ export function InspectorPanel({
     image_generation: ImageIcon,
   }[node.node_type];
   const InspectorIcon = icon;
-  const displayTitle = workflowNodeDisplayTitle({ ...node, title: draft.title || node.title });
-  const displayLabel = workflowNodeDisplayLabel(node);
+  const displayTitle = workflowNodeDisplayTitle({ ...node, title: draft.title || node.title }, t);
+  const displayLabel = workflowNodeDisplayLabel(node, t);
   const downstreamReferenceCount =
     node.node_type === "image_generation"
       ? new Set(
@@ -130,7 +148,7 @@ export function InspectorPanel({
       Array.isArray(node.output_json?.source_asset_ids) &&
       node.output_json.source_asset_ids.length,
   );
-  const referenceImage = node.node_type === "reference_image" ? getNodeImageDownload(node, product) : null;
+  const referenceImage = node.node_type === "reference_image" ? getNodeImageDownload(node, product, t) : null;
 
   return (
     <div className="space-y-3">
@@ -159,7 +177,7 @@ export function InspectorPanel({
                 ) : (
                   <Clock3 size={11} className="mr-1" />
                 )}
-                {workflowNodeStatusLabel(node)}
+                {workflowNodeStatusLabel(node, t)}
               </span>
               <span
                 className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium ${SAVE_STATUS_CLASS_NAMES[saveStatus]}`}
@@ -171,12 +189,12 @@ export function InspectorPanel({
                 ) : saveStatus === "failed" ? (
                   <XCircle size={11} className="mr-1" />
                 ) : null}
-                {SAVE_STATUS_LABELS[saveStatus]}
+                {t(SAVE_STATUS_LABEL_KEYS[saveStatus])}
               </span>
             </div>
             {node.last_run_at ? (
               <div className="mt-2 text-[11px] text-zinc-400">
-                最近 {formatDateTime(node.last_run_at)}
+                {t("detail.inspector.lastRun", { time: formatDateTime(node.last_run_at) })}
               </div>
             ) : null}
           </div>
@@ -210,14 +228,14 @@ export function InspectorPanel({
                 onClick={onCancelRun}
                 disabled={cancelBusy}
                 className="inline-flex items-center justify-center rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-100 disabled:opacity-50"
-                title="取消包含该节点的当前运行"
+                title={t("detail.inspector.cancelCurrentRun")}
               >
                 {cancelBusy ? (
                   <Loader2 size={13} className="mr-1.5 animate-spin" />
                 ) : (
                   <OctagonX size={13} className="mr-1.5" />
                 )}
-                取消
+                {t("detail.cancel")}
               </button>
             ) : null}
             {node.node_type !== "product_context" ? (
@@ -227,7 +245,7 @@ export function InspectorPanel({
                 disabled={busy}
                 className="inline-flex items-center justify-center rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
               >
-                <Trash2 size={13} className="mr-1.5" /> 删除
+                <Trash2 size={13} className="mr-1.5" /> {t("detail.delete")}
               </button>
             ) : null}
           </div>
@@ -236,11 +254,11 @@ export function InspectorPanel({
 
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/50">
         <div className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
-          配置
+          {t("detail.inspector.config")}
         </div>
         <label className="mb-3 block">
           <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-widest text-zinc-400">
-            节点名称
+            {t("detail.inspector.nodeName")}
           </span>
           <input
             value={draft.title}
@@ -252,12 +270,12 @@ export function InspectorPanel({
         </label>
         <div className="mb-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600">
           {node.node_type === "image_generation"
-            ? "生成结果写入下游图片节点。"
+            ? t("detail.inspector.description.imageGeneration")
             : node.node_type === "reference_image"
-              ? "可上传，也可接收生成结果。"
+              ? t("detail.inspector.description.referenceImage")
               : node.node_type === "copy_generation"
-                ? "读取商品资料和图片参考。"
-                : "提供商品基础信息。"}
+                ? t("detail.inspector.description.copyGeneration")
+                : t("detail.inspector.description.productContext")}
         </div>
 
         {node.node_type === "product_context" ? (
@@ -266,6 +284,7 @@ export function InspectorPanel({
             sourceImage={sourceImage}
             draft={draft}
             onDraftChange={onDraftChange}
+            t={t}
           />
         ) : null}
         {node.node_type === "reference_image" ? (
@@ -277,6 +296,7 @@ export function InspectorPanel({
             hasImage={hasReferenceImage}
             image={referenceImage}
             onPreviewImage={onPreviewImage}
+            t={t}
           />
         ) : null}
         {node.node_type === "copy_generation" ? (
@@ -284,6 +304,7 @@ export function InspectorPanel({
             node={node}
             draft={draft}
             onDraftChange={onDraftChange}
+            t={t}
           />
         ) : null}
         {node.node_type === "image_generation" ? (
@@ -296,6 +317,7 @@ export function InspectorPanel({
             onDraftChange={onDraftChange}
             downstreamReferenceCount={downstreamReferenceCount}
             onPreviewPrompt={setPromptPreview}
+            t={t}
           />
         ) : null}
       </section>
@@ -304,7 +326,7 @@ export function InspectorPanel({
           <AlertCircle size={13} className="mr-1.5 inline" />
           {node.failure_reason}
           {!runActionState.disabled && node.node_type !== "product_context" ? (
-            <div className="mt-2 font-semibold text-red-700">当前节点可重试。</div>
+            <div className="mt-2 font-semibold text-red-700">{t("detail.inspector.retryableCurrent")}</div>
           ) : null}
         </section>
       ) : null}
@@ -320,11 +342,13 @@ function ProductContextInspector({
   sourceImage,
   draft,
   onDraftChange,
+  t,
 }: {
   product: ProductDetail;
   sourceImage: DownloadableImage | null;
   draft: NodeConfigDraft;
   onDraftChange: (draft: NodeConfigDraft) => void;
+  t: TFunction;
 }) {
   return (
     <div className="space-y-3">
@@ -341,12 +365,12 @@ function ProductContextInspector({
             <DownloadLink image={sourceImage} variant="overlay" />
           </>
         ) : (
-          <div className="text-xs text-zinc-400">暂无商品源图</div>
+          <div className="text-xs text-zinc-400">{t("detail.inspector.noSourceImage")}</div>
         )}
       </div>
       <label className="block">
         <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-widest text-zinc-400">
-          商品名称
+          {t("detail.inspector.productName")}
         </span>
         <input
           value={draft.productName}
@@ -359,7 +383,7 @@ function ProductContextInspector({
       <div className="grid grid-cols-2 gap-2">
         <label className="block">
           <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-widest text-zinc-400">
-            类目
+            {t("detail.inspector.category")}
           </span>
           <input
             value={draft.category}
@@ -371,7 +395,7 @@ function ProductContextInspector({
         </label>
         <label className="block">
           <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-widest text-zinc-400">
-            价格
+            {t("detail.inspector.price")}
           </span>
           <input
             value={draft.price}
@@ -383,12 +407,12 @@ function ProductContextInspector({
         </label>
       </div>
       <TextArea
-        label="商品描述"
+        label={t("detail.inspector.productDescription")}
         value={draft.sourceNote}
         onChange={(value) => onDraftChange({ ...draft, sourceNote: value })}
       />
       <div className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-500">
-        原始商品：{product.name}
+        {t("detail.inspector.originalProduct", { name: product.name })}
         {product.category ? ` · ${product.category}` : ""}
         {product.price ? ` · ${formatPrice(product.price)}` : ""}
       </div>
@@ -404,6 +428,7 @@ function ReferenceImageInspector({
   hasImage,
   image,
   onPreviewImage,
+  t,
 }: {
   draft: NodeConfigDraft;
   onDraftChange: (draft: NodeConfigDraft) => void;
@@ -412,6 +437,7 @@ function ReferenceImageInspector({
   hasImage: boolean;
   image: DownloadableImage | null;
   onPreviewImage: (image: DownloadableImage) => void;
+  t: TFunction;
 }) {
   return (
     <div className="space-y-3">
@@ -423,23 +449,23 @@ function ReferenceImageInspector({
             type="button"
             onClick={() => onPreviewImage(image)}
             className="flex h-full w-full items-center justify-center rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
-            aria-label={`预览 ${image.alt}`}
+            aria-label={t("detail.inspector.preview", { alt: image.alt })}
           >
             <img src={image.previewUrl} alt={image.alt} className="h-full w-full object-contain" />
             <span className="pointer-events-none absolute bottom-2 left-2 rounded-md bg-zinc-950/70 px-2 py-1 text-[11px] font-medium text-white opacity-0 transition-opacity group-hover:opacity-100">
-              点击预览
+              {t("detail.inspector.clickPreview")}
             </span>
           </button>
           <DownloadLink image={image} variant="overlay" />
           <div className="absolute left-2 top-2 inline-flex items-center rounded-md bg-white/95 px-2 py-1 text-[10px] font-medium text-indigo-700 shadow-sm ring-1 ring-indigo-100">
             <Sparkles size={11} className="mr-1" />
-            可作参考
+            {t("detail.canUseAsReference")}
           </div>
         </div>
       ) : null}
       <label className="block">
         <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-widest text-zinc-400">
-          标签
+          {t("detail.inspector.label")}
         </span>
         <input
           value={draft.label}
@@ -451,7 +477,7 @@ function ReferenceImageInspector({
       </label>
       <label className="block">
         <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-widest text-zinc-400">
-          角色
+          {t("detail.inspector.role")}
         </span>
         <select
           value={draft.role}
@@ -460,20 +486,15 @@ function ReferenceImageInspector({
           }
           className="w-full rounded-md border border-zinc-200 px-3 py-2 text-xs outline-none focus:border-zinc-900 focus:ring-1 focus:ring-zinc-900"
         >
-          <option value="reference">参考图</option>
-          <option value="style">风格图</option>
-          <option value="product_angle">商品角度图</option>
-          <option value="main_image">主图</option>
-          <option value="sku_image">SKU 图</option>
-          <option value="model_image">模特图</option>
-          <option value="scene_image">场景图</option>
-          <option value="detail_image">详情图</option>
-          <option value="campaign_image">活动图</option>
-          <option value="background">背景图</option>
+          {REFERENCE_ROLE_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {t(option.labelKey)}
+            </option>
+          ))}
         </select>
       </label>
       <ImageDropZone
-        ariaLabel={hasImage ? "替换参考图" : "上传参考图"}
+        ariaLabel={hasImage ? t("detail.inspector.replaceReference") : t("detail.inspector.uploadReference")}
         disabled={busy}
         className="flex cursor-pointer items-center justify-center rounded-md border border-dashed border-zinc-300 px-3 py-6 text-xs font-medium text-zinc-600 transition-colors hover:bg-zinc-50"
         onFiles={(files) => {
@@ -486,7 +507,11 @@ function ReferenceImageInspector({
         {({ isDragging }) => (
           <>
             <Upload size={14} className="mr-2" />
-            {isDragging ? "松开以上传图片" : hasImage ? "拖拽或点击替换图片" : "拖拽或点击上传图片"}
+            {isDragging
+              ? t("detail.inspector.dropUpload")
+              : hasImage
+                ? t("detail.inspector.replaceImage")
+                : t("detail.inspector.uploadImage")}
           </>
         )}
       </ImageDropZone>
@@ -498,10 +523,12 @@ function CopyNodeInspector({
   node,
   draft,
   onDraftChange,
+  t,
 }: {
   node: WorkflowNode;
   draft: NodeConfigDraft;
   onDraftChange: (draft: NodeConfigDraft) => void;
+  t: TFunction;
 }) {
   const hasCopy = Boolean(
     node.output_json && outputText(node.output_json, "copy_set_id"),
@@ -510,13 +537,13 @@ function CopyNodeInspector({
   return (
     <div className="space-y-3">
       <TextArea
-        label="文案指令"
+        label={t("detail.inspector.copyInstruction")}
         value={draft.instruction}
         onChange={(value) => onDraftChange({ ...draft, instruction: value })}
       />
       <label className="block">
         <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-widest text-zinc-400">
-          语气
+          {t("detail.inspector.tone")}
         </span>
         <input
           value={draft.tone}
@@ -528,7 +555,7 @@ function CopyNodeInspector({
       </label>
       <label className="block">
         <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-widest text-zinc-400">
-          渠道
+          {t("detail.inspector.channel")}
         </span>
         <input
           value={draft.channel}
@@ -541,16 +568,17 @@ function CopyNodeInspector({
       {hasCopy ? (
         <div className="space-y-3 rounded-md border border-zinc-200 bg-zinc-50 p-3">
           <div className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400">
-            编辑文案
+            {t("detail.inspector.editCopy")}
           </div>
           {copyPayload ? (
             <StructuredCopyEditor
               payload={copyPayload}
               onChange={(copyStructuredPayload) => onDraftChange({ ...draft, copyStructuredPayload })}
+              t={t}
             />
           ) : null}
           <div className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-[11px] leading-5 text-zinc-500">
-            文案编辑会自动保存；运行前也会先同步当前草稿。
+            {t("detail.inspector.copyAutosave")}
           </div>
         </div>
       ) : null}
@@ -561,15 +589,17 @@ function CopyNodeInspector({
 function StructuredCopyEditor({
   payload,
   onChange,
+  t,
 }: {
   payload: CopyPayloadV2;
   onChange: (payload: CopyPayloadV2) => void;
+  t: TFunction;
 }) {
   const content = payload.content;
   return (
     <div className="space-y-3">
       <TextArea
-        label="摘要"
+        label={t("detail.inspector.summary")}
         value={payload.summary}
         onChange={(summary) => onChange({ ...payload, summary })}
         minRows={1}
@@ -577,7 +607,7 @@ function StructuredCopyEditor({
       />
       {content.kind === "freeform" ? (
         <TextArea
-          label="正文"
+          label={t("detail.inspector.body")}
           value={content.text}
           onChange={(text) => onChange({ ...payload, content: { kind: "freeform", text } })}
           minRows={3}
@@ -595,6 +625,7 @@ function StructuredCopyEditor({
                 blocks[index] = nextBlock;
                 onChange({ ...payload, content: { kind: "blocks", blocks } });
               }}
+              t={t}
             />
           ))}
         </div>
@@ -610,15 +641,16 @@ function StructuredCopyEditor({
                 sections[index] = nextSection;
                 onChange({ ...payload, content: { kind: "layout_brief", sections } });
               }}
+              t={t}
             />
           ))}
         </div>
       ) : null}
       <OptionalTextArea
-        label="视觉建议"
+        label={t("detail.inspector.visualGuidance")}
         value={payload.visual_guidance?.composition_hint ?? ""}
-        addLabel="添加视觉建议"
-        placeholder="补充画面构图、文字层级、留白等建议"
+        addLabel={t("detail.inspector.addVisualGuidance")}
+        placeholder={t("detail.inspector.visualGuidancePlaceholder")}
         onChange={(composition_hint) =>
           onChange({
             ...payload,
@@ -636,55 +668,55 @@ function StructuredCopyEditor({
   );
 }
 
-function CopyBlockEditor({ block, onChange }: { block: CopyBlock; onChange: (block: CopyBlock) => void }) {
+function CopyBlockEditor({ block, onChange, t }: { block: CopyBlock; onChange: (block: CopyBlock) => void; t: TFunction }) {
   return (
     <div className="space-y-2 rounded-md border border-zinc-200 bg-white p-3">
       <OptionalTextInput
-        label="标签"
+        label={t("detail.inspector.label")}
         value={block.label ?? ""}
-        addLabel="添加标签"
-        placeholder="标签"
+        addLabel={t("detail.inspector.addLabel")}
+        placeholder={t("detail.inspector.label")}
         onChange={(label) => onChange({ ...block, label })}
       />
       <TextArea
-        label="正文"
+        label={t("detail.inspector.body")}
         value={block.text}
         onChange={(text) => onChange({ ...block, text })}
         minRows={1}
         maxRows={12}
       />
       <OptionalTextArea
-        label="视觉表达"
+        label={t("detail.inspector.visualExpression")}
         value={block.visual_hint ?? ""}
-        addLabel="添加视觉表达"
-        placeholder="补充适合的图标、构图或标注方式"
+        addLabel={t("detail.inspector.addVisualExpression")}
+        placeholder={t("detail.inspector.visualExpressionPlaceholder")}
         onChange={(visual_hint) => onChange({ ...block, visual_hint })}
       />
     </div>
   );
 }
 
-function CopySectionEditor({ section, onChange }: { section: CopySection; onChange: (section: CopySection) => void }) {
+function CopySectionEditor({ section, onChange, t }: { section: CopySection; onChange: (section: CopySection) => void; t: TFunction }) {
   return (
     <div className="space-y-2 rounded-md border border-zinc-200 bg-white p-3">
       <OptionalTextInput
-        label="分区标题"
+        label={t("detail.inspector.sectionTitle")}
         value={section.title ?? ""}
-        addLabel="添加分区标题"
-        placeholder="分区标题"
+        addLabel={t("detail.inspector.addSectionTitle")}
+        placeholder={t("detail.inspector.sectionTitle")}
         onChange={(title) => onChange({ ...section, title })}
       />
       <OptionalTextArea
-        label="说明"
+        label={t("detail.inspector.description")}
         value={section.body ?? ""}
-        addLabel="添加说明"
-        placeholder="补充该分区承载的文案或画面说明"
+        addLabel={t("detail.inspector.addDescription")}
+        placeholder={t("detail.inspector.sectionDescriptionPlaceholder")}
         onChange={(body) => onChange({ ...section, body })}
       />
       {section.items.length ? (
         <div className="space-y-1.5">
           <div className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400">
-            条目
+            {t("detail.inspector.items")}
           </div>
           <div className="space-y-1.5">
             {section.items.map((item, index) => (
@@ -696,44 +728,45 @@ function CopySectionEditor({ section, onChange }: { section: CopySection; onChan
                   items[index] = nextItem;
                   onChange({ ...section, items });
                 }}
+                t={t}
               />
             ))}
           </div>
         </div>
       ) : null}
       <OptionalTextArea
-        label="视觉建议"
+        label={t("detail.inspector.visualGuidance")}
         value={section.visual_hint ?? ""}
-        addLabel="添加视觉建议"
-        placeholder="补充该分区的构图、位置或视觉标注"
+        addLabel={t("detail.inspector.addVisualGuidance")}
+        placeholder={t("detail.inspector.sectionVisualPlaceholder")}
         onChange={(visual_hint) => onChange({ ...section, visual_hint })}
       />
     </div>
   );
 }
 
-function CopySectionItemEditor({ block, onChange }: { block: CopyBlock; onChange: (block: CopyBlock) => void }) {
+function CopySectionItemEditor({ block, onChange, t }: { block: CopyBlock; onChange: (block: CopyBlock) => void; t: TFunction }) {
   return (
     <div className="space-y-1.5 border-l border-zinc-200 pl-2.5">
       <OptionalTextInput
-        label="标签"
+        label={t("detail.inspector.label")}
         value={block.label ?? ""}
-        addLabel="添加标签"
-        placeholder="标签"
+        addLabel={t("detail.inspector.addLabel")}
+        placeholder={t("detail.inspector.label")}
         onChange={(label) => onChange({ ...block, label })}
       />
       <TextArea
-        label="正文"
+        label={t("detail.inspector.body")}
         value={block.text}
         onChange={(text) => onChange({ ...block, text })}
         minRows={1}
         maxRows={8}
       />
       <OptionalTextArea
-        label="视觉表达"
+        label={t("detail.inspector.visualExpression")}
         value={block.visual_hint ?? ""}
-        addLabel="添加视觉表达"
-        placeholder="补充这个条目的视觉表达"
+        addLabel={t("detail.inspector.addVisualExpression")}
+        placeholder={t("detail.inspector.itemVisualPlaceholder")}
         onChange={(visual_hint) => onChange({ ...block, visual_hint })}
       />
     </div>
@@ -848,6 +881,7 @@ function ImageGenerationInspector({
   onDraftChange,
   downstreamReferenceCount,
   onPreviewPrompt,
+  t,
 }: {
   node: WorkflowNode;
   draft: NodeConfigDraft;
@@ -857,17 +891,18 @@ function ImageGenerationInspector({
   onDraftChange: (draft: NodeConfigDraft) => void;
   downstreamReferenceCount: number;
   onPreviewPrompt: (preview: PromptPreview) => void;
+  t: TFunction;
 }) {
   const [settingsTab, setSettingsTab] = useState<ImageGenerationSettingsTab>("basic");
   const savedInstruction = node.output_json ? outputText(node.output_json, "instruction") : "";
   const previewText = savedInstruction || draft.instruction;
-  const promptMeta = savedInstruction ? "最近一次运行保存的生图指令" : "当前草稿";
+  const promptMeta = savedInstruction ? t("detail.inspector.savedPromptMeta") : t("detail.inspector.currentDraft");
 
   return (
     <div className="space-y-3">
       {downstreamReferenceCount === 0 ? (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
-          先连接图片节点。
+          {t("detail.inspector.connectImageNodeFirst")}
         </div>
       ) : null}
       <ImageGenerationSettingsTabs
@@ -878,18 +913,18 @@ function ImageGenerationInspector({
             <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-xs font-semibold text-slate-700">生成数量</div>
+                  <div className="text-xs font-semibold text-slate-700">{t("detail.inspector.generationCount")}</div>
                   <div className="mt-1 text-[11px] leading-5 text-slate-500">
-                    下游图片节点：{downstreamReferenceCount} 张
+                    {t("detail.inspector.downstreamImageCount", { count: downstreamReferenceCount })}
                   </div>
                 </div>
                 <span className="shrink-0 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">
-                  {downstreamReferenceCount} 张
+                  {t("detail.inspector.imageCount", { count: downstreamReferenceCount })}
                 </span>
               </div>
             </div>
             <TextArea
-              label="画面描述"
+              label={t("detail.inspector.imageDescription")}
               value={draft.instruction}
               onChange={(value) => onDraftChange({ ...draft, instruction: value })}
             />
@@ -898,7 +933,7 @@ function ImageGenerationInspector({
                 type="button"
                 onClick={() =>
                   onPreviewPrompt({
-                    title: "生图 Prompt",
+                    title: t("detail.inspector.imagePrompt"),
                     text: previewText,
                     meta: promptMeta,
                   })
@@ -906,7 +941,7 @@ function ImageGenerationInspector({
                 className="inline-flex w-full items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-950"
               >
                 <FileText size={13} className="mr-1.5" />
-                回看完整 Prompt
+                {t("detail.inspector.reviewPrompt")}
               </button>
             ) : null}
             <ImageGenerationSettingsPanel

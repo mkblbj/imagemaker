@@ -15,6 +15,7 @@ import { useNavigate } from "react-router-dom";
 
 import { TopNav } from "../components/TopNav";
 import { api, ApiError } from "../lib/api";
+import { useI18n } from "../lib/preferences";
 import type { ConfigItem, ConfigResponse } from "../lib/types";
 
 type DraftValue = string | boolean | string[];
@@ -95,9 +96,9 @@ export function configValuesFromChangedDrafts(
   return values;
 }
 
-function sourceLabel(item: ConfigItem): string {
+function sourceLabel(item: ConfigItem, t: ReturnType<typeof useI18n>["t"]): string {
   if (item.source === "database") {
-    return "数据库";
+    return t("settings.database");
   }
   return "env/default";
 }
@@ -120,6 +121,7 @@ interface ConfigFieldProps {
 }
 
 function ConfigField({ item, value, secretTouched, isResetting, compact = false, onChange, onReset }: ConfigFieldProps) {
+  const { t } = useI18n();
   const baseInputClass =
     "w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 transition-shadow placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500";
   const selectedMultiValues = Array.isArray(value) ? value : [];
@@ -135,8 +137,8 @@ function ConfigField({ item, value, secretTouched, isResetting, compact = false,
 
   const description = item.secret
     ? item.has_value
-      ? `${item.description || "密钥字段不会回显。"} 留空保存时不会覆盖当前值。`
-      : item.description || "密钥字段不会回显。"
+      ? t("settings.secretKeep", { description: item.description || t("settings.secretHidden") })
+      : item.description || t("settings.secretHidden")
     : item.description;
 
   const control =
@@ -187,7 +189,7 @@ function ConfigField({ item, value, secretTouched, isResetting, compact = false,
           onChange={(event) => onChange(event.target.checked)}
           className="h-4 w-4 accent-zinc-900"
         />
-        <span>{Boolean(value) ? "已启用" : "已关闭"}</span>
+        <span>{Boolean(value) ? t("settings.enabled") : t("settings.disabled")}</span>
       </label>
     ) : (
       <input
@@ -196,7 +198,7 @@ function ConfigField({ item, value, secretTouched, isResetting, compact = false,
         value={String(value)}
         min={item.minimum ?? undefined}
         max={item.maximum ?? undefined}
-        placeholder={item.secret && item.has_value ? "已有值，输入新值后覆盖" : item.description || undefined}
+        placeholder={item.secret && item.has_value ? t("settings.secretPlaceholder") : item.description || undefined}
         onChange={(event) => onChange(event.target.value, item.secret)}
         className={baseInputClass}
         autoComplete={item.secret ? "new-password" : undefined}
@@ -211,7 +213,7 @@ function ConfigField({ item, value, secretTouched, isResetting, compact = false,
             {item.label}
           </label>
           <span className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${sourceClassName(item)}`}>
-            {sourceLabel(item)}
+            {sourceLabel(item, t)}
           </span>
         </div>
         {control}
@@ -223,7 +225,7 @@ function ConfigField({ item, value, secretTouched, isResetting, compact = false,
               onClick={onReset}
               disabled={isResetting}
               className="inline-flex shrink-0 items-center text-[11px] font-medium text-zinc-500 transition-colors hover:text-zinc-900 disabled:opacity-50"
-              aria-label={`恢复 ${item.label} 默认值`}
+              aria-label={t("settings.restoreDefaultAria", { label: item.label })}
             >
               {isResetting ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
             </button>
@@ -241,7 +243,7 @@ function ConfigField({ item, value, secretTouched, isResetting, compact = false,
             {item.label}
           </label>
           <span className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${sourceClassName(item)}`}>
-            {sourceLabel(item)}
+            {sourceLabel(item, t)}
           </span>
         </div>
         <div className="mt-1 font-mono text-[11px] text-zinc-400">{item.key}</div>
@@ -253,7 +255,7 @@ function ConfigField({ item, value, secretTouched, isResetting, compact = false,
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="min-h-4 text-xs leading-5 text-zinc-500">
             {description}
-            {item.secret && secretTouched ? <span className="ml-2 text-amber-600">将写入新的数据库值</span> : null}
+            {item.secret && secretTouched ? <span className="ml-2 text-amber-600">{t("settings.writeNewSecret")}</span> : null}
           </p>
           {item.source === "database" ? (
             <button
@@ -263,7 +265,7 @@ function ConfigField({ item, value, secretTouched, isResetting, compact = false,
               className="inline-flex items-center text-xs font-medium text-zinc-500 transition-colors hover:text-zinc-900 disabled:opacity-50"
             >
               {isResetting ? <Loader2 size={13} className="mr-1 animate-spin" /> : <RotateCcw size={13} className="mr-1" />}
-              恢复 env/default
+              {t("settings.restoreDefault")}
             </button>
           ) : null}
         </div>
@@ -273,6 +275,7 @@ function ConfigField({ item, value, secretTouched, isResetting, compact = false,
 }
 
 export function SettingsPage() {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [drafts, setDrafts] = useState<Record<string, DraftValue>>({});
@@ -359,7 +362,7 @@ export function SettingsPage() {
       void queryClient.invalidateQueries({ queryKey: ["runtime-config"] });
       void queryClient.invalidateQueries({ queryKey: ["session"] });
       setError("");
-      setSavedMessage("配置已写入数据库，后续任务会优先读取数据库配置。");
+      setSavedMessage(t("settings.saved"));
     },
     onError: (mutationError) => {
       setSavedMessage("");
@@ -370,7 +373,7 @@ export function SettingsPage() {
         setError(mutationError.detail);
         return;
       }
-      setError(mutationError instanceof Error ? mutationError.message : "保存配置失败");
+      setError(mutationError instanceof Error ? mutationError.message : t("settings.saveFailed"));
     },
   });
 
@@ -385,7 +388,7 @@ export function SettingsPage() {
       queryClient.setQueryData(["config"], data);
       void queryClient.invalidateQueries({ queryKey: ["runtime-config"] });
       void queryClient.invalidateQueries({ queryKey: ["session"] });
-      setSavedMessage("已删除数据库覆盖值，当前配置回退到 env/default。 ");
+      setSavedMessage(t("settings.restored"));
     },
     onError: (mutationError) => {
       if (mutationError instanceof ApiError) {
@@ -395,7 +398,7 @@ export function SettingsPage() {
         setError(mutationError.detail);
         return;
       }
-      setError(mutationError instanceof Error ? mutationError.message : "恢复配置失败");
+      setError(mutationError instanceof Error ? mutationError.message : t("settings.restoreFailed"));
     },
     onSettled: () => setResettingKey(null),
   });
@@ -406,7 +409,7 @@ export function SettingsPage() {
       queryClient.setQueryData(["settings-lock-state"], data);
       setUnlockToken("");
       setError("");
-      setSavedMessage("系统配置已解锁。本次登录会话内可读取和修改运行时配置。");
+      setSavedMessage(t("settings.unlocked"));
       void queryClient.invalidateQueries({ queryKey: ["config"] });
     },
     onError: (mutationError) => {
@@ -415,7 +418,7 @@ export function SettingsPage() {
         setError(mutationError.detail);
         return;
       }
-      setError(mutationError instanceof Error ? mutationError.message : "解锁配置失败");
+      setError(mutationError instanceof Error ? mutationError.message : t("settings.unlockFailed"));
     },
   });
 
@@ -451,9 +454,9 @@ export function SettingsPage() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-50">
+    <div className="flex min-h-screen flex-col bg-slate-50 dark:bg-slate-950">
       <TopNav
-        breadcrumbs="配置"
+        breadcrumbs={t("settings.breadcrumb")}
         onHome={() => navigate("/products")}
         onLogout={() => logoutMutation.mutate()}
       />
@@ -465,9 +468,9 @@ export function SettingsPage() {
               <div className="mb-3 inline-flex items-center rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
                 <SettingsIcon size={13} className="mr-1.5" /> Runtime Config
               </div>
-              <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">系统配置</h1>
+              <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">{t("settings.title")}</h1>
               <p className="mt-1 text-sm text-slate-500">
-                数据库配置优先生效，未写入数据库的字段继续使用 env/default 值。
+                {t("settings.description")}
               </p>
             </div>
             <button
@@ -475,7 +478,7 @@ export function SettingsPage() {
               onClick={() => navigate("/products")}
               className="text-sm font-medium text-zinc-500 transition-colors hover:text-zinc-900"
             >
-              返回商品列表
+              {t("settings.back")}
             </button>
           </div>
 
@@ -485,11 +488,11 @@ export function SettingsPage() {
             </div>
           ) : lockStateQuery.isError ? (
             <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              配置锁状态加载失败，请确认后端和数据库已启动。
+              {t("settings.lockLoadFailed")}
             </div>
           ) : !lockStateQuery.data?.configured ? (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800">
-              设置解锁令牌未配置。请在后端环境变量中设置 SETTINGS_ACCESS_TOKEN 后重启服务，保护全局配置不被未授权修改。
+              {t("settings.tokenMissing")}
             </div>
           ) : !lockStateQuery.data.unlocked ? (
             <form
@@ -501,14 +504,14 @@ export function SettingsPage() {
                   <LockKeyhole size={18} />
                 </span>
                 <div>
-                  <h2 className="text-base font-semibold text-slate-950">需要二次令牌才能查看系统配置</h2>
+                  <h2 className="text-base font-semibold text-slate-950">{t("settings.unlockTitle")}</h2>
                   <p className="mt-1 text-sm leading-6 text-slate-500">
-                    模型、API Key、提示词和并发上限属于全局配置。请输入设置解锁令牌后再查看或修改这些配置。
+                    {t("settings.unlockDescription")}
                   </p>
                 </div>
               </div>
               <label htmlFor="settings-token" className="text-sm font-medium text-slate-800">
-                设置解锁令牌
+                {t("settings.unlockToken")}
               </label>
               <input
                 id="settings-token"
@@ -516,7 +519,7 @@ export function SettingsPage() {
                 value={unlockToken}
                 onChange={(event) => setUnlockToken(event.target.value)}
                 className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 transition-shadow placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                placeholder="输入 SETTINGS_ACCESS_TOKEN"
+                placeholder={t("settings.unlockPlaceholder")}
                 autoComplete="current-password"
               />
               {error ? (
@@ -535,7 +538,7 @@ export function SettingsPage() {
                   ) : (
                     <LockKeyhole size={14} className="mr-2" />
                   )}
-                  解锁配置
+                  {t("settings.unlock")}
                 </button>
               </div>
             </form>
@@ -545,7 +548,7 @@ export function SettingsPage() {
             </div>
           ) : configQuery.isError ? (
             <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {configQuery.error instanceof ApiError ? configQuery.error.detail : "配置加载失败，请确认后端和数据库已启动。"}
+              {configQuery.error instanceof ApiError ? configQuery.error.detail : t("settings.loadFailed")}
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-6">
@@ -554,9 +557,13 @@ export function SettingsPage() {
                   <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/50">
                     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                       <div>
-                        <div className="text-sm font-semibold text-slate-950">配置分类</div>
+                        <div className="text-sm font-semibold text-slate-950">{t("settings.categories")}</div>
                         <div className="mt-1 text-xs text-slate-500">
-                          第 {activePageNumber} / {groupedItems.length} 页 · 当前 {activeGroup.items.length} 项
+                          {t("settings.categorySummary", {
+                            page: activePageNumber,
+                            totalPages: groupedItems.length,
+                            count: activeGroup.items.length,
+                          })}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -565,7 +572,7 @@ export function SettingsPage() {
                           onClick={() => setActiveConfigCategory(groupedItems[activeGroupIndex - 1]?.category ?? activeGroup.category)}
                           disabled={activeGroupIndex === 0}
                           className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-950 disabled:opacity-40"
-                          aria-label="上一类配置"
+                          aria-label={t("settings.prevCategory")}
                         >
                           <ChevronLeft size={16} />
                         </button>
@@ -577,13 +584,13 @@ export function SettingsPage() {
                           onClick={() => setActiveConfigCategory(groupedItems[activeGroupIndex + 1]?.category ?? activeGroup.category)}
                           disabled={activeGroupIndex >= groupedItems.length - 1}
                           className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-950 disabled:opacity-40"
-                          aria-label="下一类配置"
+                          aria-label={t("settings.nextCategory")}
                         >
                           <ChevronRight size={16} />
                         </button>
                       </div>
                     </div>
-                    <div className="mt-4 flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="配置分类">
+                    <div className="mt-4 flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label={t("settings.categoryNav")}>
                       {groupedItems.map((group, index) => {
                         const active = group.category === activeGroup.category;
                         return (
@@ -621,7 +628,7 @@ export function SettingsPage() {
                   >
                     <div className="border-b border-slate-100 bg-slate-50/70 px-5 py-4">
                       <h2 className="text-sm font-semibold text-slate-950">{activeGroup.category}</h2>
-                      <p className="mt-1 text-xs text-slate-500">{activeGroup.items.length} 项运行时配置</p>
+                      <p className="mt-1 text-xs text-slate-500">{t("settings.itemCount", { count: activeGroup.items.length })}</p>
                     </div>
                     <div className={activeGroup.category === "图片工具参数" ? "grid gap-3 p-5 sm:grid-cols-2" : "px-5"}>
                       {activeGroup.items.map((item) => (
@@ -647,7 +654,7 @@ export function SettingsPage() {
                 </>
               ) : (
                 <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-5 py-10 text-center text-sm text-slate-500">
-                  暂无可配置项
+                  {t("settings.empty")}
                 </div>
               )}
 
@@ -668,7 +675,7 @@ export function SettingsPage() {
                     disabled={configQuery.isFetching}
                     className="px-4 py-2 text-sm font-medium text-zinc-600 transition-colors hover:text-zinc-900 disabled:opacity-50"
                   >
-                    {configQuery.isFetching ? "正在恢复..." : "放弃未保存修改"}
+                    {configQuery.isFetching ? t("settings.restoring") : t("settings.discard")}
                   </button>
                   <button
                     type="submit"
@@ -676,7 +683,7 @@ export function SettingsPage() {
                     className="inline-flex items-center rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-indigo-600/20 transition-colors hover:bg-indigo-500 disabled:opacity-50"
                   >
                     {saveMutation.isPending ? <Loader2 size={14} className="mr-2 animate-spin" /> : <Save size={14} className="mr-2" />}
-                    保存到数据库
+                    {t("settings.save")}
                   </button>
                 </div>
               </div>

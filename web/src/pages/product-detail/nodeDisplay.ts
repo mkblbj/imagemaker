@@ -1,37 +1,40 @@
+import {
+  localizeBuiltInTemplateLabel,
+  localizeBuiltInTemplateNodeTitle,
+} from "../../lib/canvasTemplateLocalization";
+import { LOCALES, translate, type Locale, type TranslationKey, type TranslationParams } from "../../lib/i18n";
 import type { WorkflowNode, WorkflowNodeType } from "../../lib/types";
 
-const BASE_NODE_LABELS: Record<WorkflowNodeType, string> = {
-  product_context: "商品资料",
-  reference_image: "图片节点",
-  copy_generation: "商品文案",
-  image_generation: "生成图片",
+type TranslateFunction = (key: TranslationKey, params?: TranslationParams) => string;
+type LocaleAwareTranslateFunction = TranslateFunction & { locale?: Locale };
+
+const defaultT: TranslateFunction = (key, params) => translate("zh-CN", key, params);
+
+const BASE_NODE_LABEL_KEYS: Record<WorkflowNodeType, TranslationKey> = {
+  product_context: "detail.node.productContext",
+  reference_image: "detail.node.referenceImage",
+  copy_generation: "detail.node.copyGeneration",
+  image_generation: "detail.node.imageGeneration",
 };
 
-const DEFAULT_TITLE_PREFIXES: Record<WorkflowNodeType, string> = {
-  product_context: "商品资料",
-  reference_image: "图片节点",
-  copy_generation: "商品文案",
-  image_generation: "生成图片",
+const LEGACY_TITLE_PREFIX_KEYS: Record<WorkflowNodeType, TranslationKey> = {
+  product_context: "detail.node.legacyProduct",
+  reference_image: "detail.node.legacyReference",
+  copy_generation: "detail.node.legacyCopy",
+  image_generation: "detail.node.legacyImage",
 };
 
-const LEGACY_TITLE_PREFIXES: Record<WorkflowNodeType, string> = {
-  product_context: "商品",
-  reference_image: "参考图",
-  copy_generation: "文案",
-  image_generation: "生图",
-};
-
-const REFERENCE_ROLE_LABELS: Record<string, string> = {
-  reference: "图片节点",
-  style: "风格图",
-  product_angle: "商品角度图",
-  main_image: "主图",
-  sku_image: "SKU 图",
-  model_image: "模特图",
-  scene_image: "场景图",
-  detail_image: "详情图",
-  campaign_image: "活动图",
-  background: "背景图",
+const REFERENCE_ROLE_LABEL_KEYS: Record<string, TranslationKey> = {
+  reference: "detail.referenceRole.reference",
+  style: "detail.referenceRole.style",
+  product_angle: "detail.referenceRole.productAngle",
+  main_image: "detail.referenceRole.mainImage",
+  sku_image: "detail.referenceRole.skuImage",
+  model_image: "detail.referenceRole.modelImage",
+  scene_image: "detail.referenceRole.sceneImage",
+  detail_image: "detail.referenceRole.detailImage",
+  campaign_image: "detail.referenceRole.campaignImage",
+  background: "detail.referenceRole.background",
 };
 
 function stringConfig(node: Pick<WorkflowNode, "config_json">, key: string): string {
@@ -39,72 +42,96 @@ function stringConfig(node: Pick<WorkflowNode, "config_json">, key: string): str
   return typeof value === "string" ? value.trim() : "";
 }
 
-function legacyDefaultTitle(type: WorkflowNodeType, title: string): boolean {
+function defaultTitlePrefixes(type: WorkflowNodeType, t: TranslateFunction): string[] {
+  const localizedPrefixes = [t(LEGACY_TITLE_PREFIX_KEYS[type]), t(BASE_NODE_LABEL_KEYS[type])];
+  const knownLocalePrefixes = LOCALES.flatMap((locale) => [
+    translate(locale, LEGACY_TITLE_PREFIX_KEYS[type]),
+    translate(locale, BASE_NODE_LABEL_KEYS[type]),
+  ]);
+  return Array.from(new Set([...localizedPrefixes, ...knownLocalePrefixes]));
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function legacyDefaultTitle(type: WorkflowNodeType, title: string, t: TranslateFunction = defaultT): boolean {
   const trimmed = title.trim();
-  const legacyPrefix = LEGACY_TITLE_PREFIXES[type];
-  const defaultPrefix = DEFAULT_TITLE_PREFIXES[type];
-  return (
-    trimmed === legacyPrefix ||
-    trimmed === defaultPrefix ||
-    new RegExp(`^${legacyPrefix}\\s+\\d+$`).test(trimmed) ||
-    new RegExp(`^${defaultPrefix}\\s+\\d+$`).test(trimmed)
+  return defaultTitlePrefixes(type, t).some(
+    (prefix) => trimmed === prefix || new RegExp(`^${escapeRegExp(prefix)}\\s+\\d+$`).test(trimmed),
   );
 }
 
 export function workflowNodeTypeLabel(type: WorkflowNodeType): string {
-  return BASE_NODE_LABELS[type];
+  return defaultT(BASE_NODE_LABEL_KEYS[type]);
 }
 
-export function referenceSlotLabel(node: Pick<WorkflowNode, "config_json" | "title" | "node_type">): string {
+export function localizedWorkflowNodeTypeLabel(type: WorkflowNodeType, t: TranslateFunction = defaultT): string {
+  return t(BASE_NODE_LABEL_KEYS[type]);
+}
+
+export function referenceSlotLabel(node: Pick<WorkflowNode, "config_json" | "title" | "node_type">, t: TranslateFunction = defaultT): string {
   const explicitLabel = stringConfig(node, "label");
   if (explicitLabel) {
-    return explicitLabel;
+    return localizeBuiltInTemplateLabel(explicitLabel, (t as LocaleAwareTranslateFunction).locale) ?? explicitLabel;
   }
-  const roleLabel = REFERENCE_ROLE_LABELS[stringConfig(node, "role")];
-  if (roleLabel) {
-    return roleLabel;
+  const roleLabelKey = REFERENCE_ROLE_LABEL_KEYS[stringConfig(node, "role")];
+  if (roleLabelKey) {
+    return t(roleLabelKey);
   }
   const title = node.title.trim();
-  if (title && !legacyDefaultTitle(node.node_type, title)) {
+  if (title && !legacyDefaultTitle(node.node_type, title, t)) {
     return title;
   }
-  return BASE_NODE_LABELS.reference_image;
+  return t(BASE_NODE_LABEL_KEYS.reference_image);
 }
 
-export function workflowNodeDisplayLabel(node: Pick<WorkflowNode, "node_type" | "config_json" | "title">): string {
+export function workflowNodeDisplayLabel(node: Pick<WorkflowNode, "node_type" | "config_json" | "title">, t: TranslateFunction = defaultT): string {
   if (node.node_type === "reference_image") {
-    return referenceSlotLabel(node);
+    return referenceSlotLabel(node, t);
   }
-  return BASE_NODE_LABELS[node.node_type];
+  return t(BASE_NODE_LABEL_KEYS[node.node_type]);
 }
 
-export function workflowNodeDisplayTitle(node: Pick<WorkflowNode, "node_type" | "config_json" | "title">): string {
+export function workflowNodeDisplayTitle(node: Pick<WorkflowNode, "node_type" | "config_json" | "title">, t: TranslateFunction = defaultT): string {
   const title = node.title.trim();
-  if (title && !legacyDefaultTitle(node.node_type, title)) {
+  const builtInTemplateTitle = localizeBuiltInTemplateNodeTitle(
+    node.node_type,
+    title,
+    (t as LocaleAwareTranslateFunction).locale,
+    node.config_json,
+  );
+  if (builtInTemplateTitle) {
+    return builtInTemplateTitle;
+  }
+  if (title && !legacyDefaultTitle(node.node_type, title, t)) {
     return title;
   }
-  return workflowNodeDisplayLabel(node);
+  return workflowNodeDisplayLabel(node, t);
 }
 
-export function defaultTitleForNodeType(type: WorkflowNodeType, index: number): string {
-  return `${DEFAULT_TITLE_PREFIXES[type]} ${index}`;
+export function defaultTitleForNodeType(type: WorkflowNodeType, index: number, t: TranslateFunction = defaultT): string {
+  return `${t(BASE_NODE_LABEL_KEYS[type])} ${index}`;
 }
 
 export function connectionDescription(
   source: Pick<WorkflowNode, "node_type" | "config_json" | "title">,
   target: Pick<WorkflowNode, "node_type" | "config_json" | "title">,
+  t: TranslateFunction = defaultT,
 ): string {
   if (source.node_type === "reference_image" && target.node_type === "reference_image") {
-    return "图片节点不能互连。";
+    return t("detail.connection.referenceToReference");
   }
+  const sourceTitle = workflowNodeDisplayTitle(source, t);
+  const targetTitle = workflowNodeDisplayTitle(target, t);
   if (source.node_type === "reference_image" && target.node_type === "copy_generation") {
-    return `${workflowNodeDisplayTitle(source)}作为${workflowNodeDisplayTitle(target)}参考。`;
+    return t("detail.connection.referenceToCopy", { source: sourceTitle, target: targetTitle });
   }
   if (source.node_type === "image_generation" && target.node_type === "reference_image") {
-    return `${workflowNodeDisplayTitle(source)}写入${workflowNodeDisplayTitle(target)}。`;
+    return t("detail.connection.imageToReference", { source: sourceTitle, target: targetTitle });
   }
   if (target.node_type === "image_generation") {
-    return `${workflowNodeDisplayTitle(source)}作为生成参考。`;
+    return t("detail.connection.toImage", { source: sourceTitle, target: targetTitle });
   }
-  return `${workflowNodeDisplayTitle(source)}连接到${workflowNodeDisplayTitle(target)}。`;
+  return t("detail.connection.default", { source: sourceTitle, target: targetTitle });
 }

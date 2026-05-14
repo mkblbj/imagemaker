@@ -1,7 +1,8 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Check, ImagePlus, Loader2, Tag, X } from "lucide-react";
+import { Check, ChevronRight, Eye, ImagePlus, LayoutTemplate, Loader2, Tag, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { Drawer } from "vaul";
 
 import { ImageDropZone } from "../components/ImageDropZone";
 import { api, ApiError } from "../lib/api";
@@ -46,6 +47,7 @@ interface CanvasPlanOption {
 const PREVIEW_MIN_WIDTH = 920;
 const PREVIEW_NODE_WIDTH = 248;
 const NODE_HEIGHT = 92;
+const PRODUCT_CREATE_FORM_ID = "product-create-form";
 
 const NODE_TYPE_LABEL_KEYS: Record<WorkflowNodeType, TranslationKey> = {
   product_context: "create.productContext",
@@ -161,10 +163,14 @@ function groupedPlans(plans: CanvasPlanOption[], t: ReturnType<typeof useI18n>["
 export function ProductCreatePage() {
   const { locale, t } = useI18n();
   const navigate = useNavigate();
+  const mobileTemplateButtonRef = useRef<HTMLButtonElement | null>(null);
+  const mobilePreviewButtonRef = useRef<HTMLButtonElement | null>(null);
   const [name, setName] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [canvasTemplateKey, setCanvasTemplateKey] = useState<string>("");
   const [error, setError] = useState("");
+  const [mobileTemplateSheetOpen, setMobileTemplateSheetOpen] = useState(false);
+  const [mobilePreviewSheetOpen, setMobilePreviewSheetOpen] = useState(false);
 
   const templatesQuery = useQuery({
     queryKey: ["canvas-templates"],
@@ -241,8 +247,99 @@ export function ProductCreatePage() {
     setError("");
   };
 
+  const templatePanelContent = (
+    <>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold text-zinc-950 dark:text-white">{t("create.templateTitle")}</h2>
+          <p className="mt-1 text-sm text-zinc-500 dark:text-slate-400">{t("create.templateDescription")}</p>
+        </div>
+        {templatesQuery.isLoading ? <Loader2 size={16} className="animate-spin text-zinc-400" /> : null}
+      </div>
+
+      {templatesQuery.isError ? (
+        <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-400/35 dark:bg-red-500/10 dark:text-red-200">
+          {t("create.templateLoadFailed")}
+        </div>
+      ) : null}
+
+      <div className="mt-4 space-y-5 pr-1 lg:max-h-[610px] lg:overflow-y-auto">
+        {planGroups.map((group) => (
+          <div key={group.stage}>
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-500 dark:text-slate-400">{group.label}</h3>
+              <span className="text-[11px] text-zinc-400 dark:text-slate-500">{group.plans.length}</span>
+            </div>
+            <div className="space-y-2">
+              {group.plans.map((option) => {
+                const selected = selectedPlan.key === option.key;
+                return (
+                  <button
+                    key={option.key || "blank"}
+                    type="button"
+                    onClick={() => {
+                      setCanvasTemplateKey(option.key);
+                      setMobileTemplateSheetOpen(false);
+                    }}
+                    className={`w-full rounded-lg border p-3 text-left transition-colors ${
+                      selected
+                        ? "border-blue-500 bg-blue-50/50 shadow-[0_0_0_1px_rgb(59_130_246)] dark:border-violet-400 dark:bg-violet-500/18 dark:shadow-[0_0_0_1px_rgba(167,139,250,0.65)]"
+                        : "border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50 dark:border-slate-700/80 dark:bg-[#151f33] dark:hover:border-violet-400/45 dark:hover:bg-violet-500/12"
+                    }`}
+                  >
+                    <div className="flex min-w-0 items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-semibold text-zinc-950 dark:text-white">
+                          {option.label}
+                        </span>
+                        <p className="mt-1 line-clamp-2 text-xs leading-5 text-zinc-500 dark:text-slate-400">
+                          {option.description}
+                        </p>
+                      </div>
+                      {selected ? <Check size={14} className="mt-0.5 shrink-0 text-blue-600 dark:text-violet-200" /> : null}
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      <TemplateChip>{option.shortLabel}</TemplateChip>
+                      {option.outputCount ? <TemplateChip>{t("create.outputCount", { count: option.outputCount })}</TemplateChip> : null}
+                      {option.referenceCount ? <TemplateChip>{t("create.referenceCount", { count: option.referenceCount })}</TemplateChip> : null}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+
+  const previewPanelContent = (
+    <>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-semibold text-zinc-950 dark:text-white">{selectedPlan.label}</h2>
+            <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-medium text-zinc-500 dark:border dark:border-slate-700 dark:bg-[#151f33] dark:text-slate-300">
+              {selectedPlan.badge}
+            </span>
+          </div>
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-zinc-500 dark:text-slate-400">{selectedPlan.description}</p>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-slate-300">
+          <span className="rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1 dark:border-slate-700 dark:bg-[#151f33]">
+            {t("create.nodeCount", { count: selectedPlan.previewNodes.length })}
+          </span>
+          <span className="rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1 dark:border-slate-700 dark:bg-[#151f33]">
+            {t("create.edgeCount", { count: selectedPlan.previewEdges.length })}
+          </span>
+        </div>
+      </div>
+      <WorkflowPreview plan={selectedPlan} />
+    </>
+  );
+
   return (
-    <div className="min-h-screen bg-zinc-100 px-4 py-4 text-zinc-900 dark:bg-[#060a12] dark:text-slate-100 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-zinc-100 px-4 pb-[calc(6.25rem+env(safe-area-inset-bottom))] pt-4 text-zinc-900 dark:bg-[#060a12] dark:text-slate-100 sm:px-6 lg:px-8 lg:pb-8">
       <main className="mx-auto max-w-[1480px]">
         <div className="mb-5 flex items-start justify-between gap-4 border-b border-zinc-200 pb-4 dark:border-slate-800">
           <div className="flex items-center gap-3">
@@ -264,7 +361,7 @@ export function ProductCreatePage() {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
+        <form id={PRODUCT_CREATE_FORM_ID} onSubmit={handleSubmit} className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
           <section className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm dark:border-slate-700/80 dark:bg-[#0f1726] dark:shadow-[0_16px_48px_rgba(0,0,0,0.22)]">
             <h2 className="text-base font-semibold text-zinc-950 dark:text-white">{t("create.productInfo")}</h2>
 
@@ -303,9 +400,29 @@ export function ProductCreatePage() {
               <div className="mt-1 text-right text-xs text-zinc-400 dark:text-slate-500">{name.length} / 60</div>
             </div>
 
+            <div className="mt-6 rounded-2xl border border-zinc-200 bg-zinc-50/70 p-3 dark:border-slate-700 dark:bg-[#0b1220] lg:hidden">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-xs font-medium text-zinc-500 dark:text-slate-400">{t("create.templateTitle")}</div>
+                  <div className="mt-1 truncate text-sm font-semibold text-zinc-950 dark:text-white">{selectedPlan.label}</div>
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    <TemplateChip>{selectedPlan.shortLabel}</TemplateChip>
+                    <TemplateChip>{t("create.nodeCount", { count: selectedPlan.previewNodes.length })}</TemplateChip>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setMobileTemplateSheetOpen(true)}
+                  className="inline-flex min-h-11 shrink-0 items-center rounded-xl border border-zinc-200 bg-white px-3 text-xs font-semibold text-zinc-700 shadow-sm transition-colors hover:border-blue-200 hover:text-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-slate-700 dark:bg-slate-950/80 dark:text-slate-200 dark:hover:border-violet-400/60 dark:hover:text-violet-100 dark:focus-visible:ring-violet-400"
+                >
+                  {t("create.changeTemplate")}
+                </button>
+              </div>
+            </div>
+
             {error ? <div className="mt-4 text-sm text-red-600">{error}</div> : null}
 
-            <div className="mt-6 flex gap-3">
+            <div className="mt-6 hidden gap-3 lg:flex">
               <button
                 type="button"
                 onClick={() => navigate("/products")}
@@ -324,93 +441,104 @@ export function ProductCreatePage() {
             </div>
           </section>
 
-          <section className="grid min-h-[720px] gap-5 xl:grid-cols-[320px_minmax(0,1fr)]">
+          <section className="hidden min-h-[720px] gap-5 lg:grid xl:grid-cols-[320px_minmax(0,1fr)]">
             <div className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm dark:border-slate-700/80 dark:bg-[#0f1726] dark:shadow-[0_16px_48px_rgba(0,0,0,0.22)]">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-base font-semibold text-zinc-950 dark:text-white">{t("create.templateTitle")}</h2>
-                  <p className="mt-1 text-sm text-zinc-500 dark:text-slate-400">{t("create.templateDescription")}</p>
-                </div>
-                {templatesQuery.isLoading ? <Loader2 size={16} className="animate-spin text-zinc-400" /> : null}
-              </div>
-
-              {templatesQuery.isError ? (
-                <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-400/35 dark:bg-red-500/10 dark:text-red-200">
-                  {t("create.templateLoadFailed")}
-                </div>
-              ) : null}
-
-              <div className="mt-4 max-h-[610px] space-y-5 overflow-y-auto pr-1">
-                {planGroups.map((group) => (
-                  <div key={group.stage}>
-                    <div className="mb-2 flex items-center justify-between">
-                      <h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-500 dark:text-slate-400">{group.label}</h3>
-                      <span className="text-[11px] text-zinc-400 dark:text-slate-500">{group.plans.length}</span>
-                    </div>
-                    <div className="space-y-2">
-                      {group.plans.map((option) => {
-                        const selected = selectedPlan.key === option.key;
-                        return (
-                          <button
-                            key={option.key || "blank"}
-                            type="button"
-                            onClick={() => setCanvasTemplateKey(option.key)}
-                            className={`w-full rounded-lg border p-3 text-left transition-colors ${
-                              selected
-                                ? "border-blue-500 bg-blue-50/50 shadow-[0_0_0_1px_rgb(59_130_246)] dark:border-violet-400 dark:bg-violet-500/18 dark:shadow-[0_0_0_1px_rgba(167,139,250,0.65)]"
-                                : "border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50 dark:border-slate-700/80 dark:bg-[#151f33] dark:hover:border-violet-400/45 dark:hover:bg-violet-500/12"
-                            }`}
-                          >
-                            <div className="flex min-w-0 items-start justify-between gap-3">
-                              <div className="min-w-0 flex-1">
-                                <span className="block truncate text-sm font-semibold text-zinc-950 dark:text-white">
-                                  {option.label}
-                                </span>
-                                <p className="mt-1 line-clamp-2 text-xs leading-5 text-zinc-500 dark:text-slate-400">
-                                  {option.description}
-                                </p>
-                              </div>
-                              {selected ? <Check size={14} className="mt-0.5 shrink-0 text-blue-600 dark:text-violet-200" /> : null}
-                            </div>
-                            <div className="mt-2 flex flex-wrap gap-1.5">
-                              <TemplateChip>{option.shortLabel}</TemplateChip>
-                              {option.outputCount ? <TemplateChip>{t("create.outputCount", { count: option.outputCount })}</TemplateChip> : null}
-                              {option.referenceCount ? <TemplateChip>{t("create.referenceCount", { count: option.referenceCount })}</TemplateChip> : null}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
+              {templatePanelContent}
             </div>
 
             <div className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm dark:border-slate-700/80 dark:bg-[#0f1726] dark:shadow-[0_16px_48px_rgba(0,0,0,0.22)]">
-              <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-lg font-semibold text-zinc-950 dark:text-white">{selectedPlan.label}</h2>
-                    <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-medium text-zinc-500 dark:border dark:border-slate-700 dark:bg-[#151f33] dark:text-slate-300">
-                      {selectedPlan.badge}
-                    </span>
-                  </div>
-                  <p className="mt-1 max-w-2xl text-sm leading-6 text-zinc-500 dark:text-slate-400">{selectedPlan.description}</p>
-                </div>
-                <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-slate-300">
-                  <span className="rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1 dark:border-slate-700 dark:bg-[#151f33]">
-                    {t("create.nodeCount", { count: selectedPlan.previewNodes.length })}
-                  </span>
-                  <span className="rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1 dark:border-slate-700 dark:bg-[#151f33]">
-                    {t("create.edgeCount", { count: selectedPlan.previewEdges.length })}
-                  </span>
-                </div>
-              </div>
-              <WorkflowPreview plan={selectedPlan} />
+              {previewPanelContent}
             </div>
           </section>
         </form>
       </main>
+
+      <div className="fixed inset-x-0 z-40 px-3 lg:hidden" style={{ bottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}>
+        <div className="mx-auto flex max-w-2xl items-center gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_-6px_18px_rgba(15,23,42,0.12)] dark:border-slate-700 dark:bg-slate-950 dark:shadow-[0_-12px_28px_rgba(0,0,0,0.30)]">
+          <button
+            ref={mobileTemplateButtonRef}
+            type="button"
+            onClick={() => setMobileTemplateSheetOpen(true)}
+            className="inline-flex min-h-11 min-w-0 flex-1 items-center rounded-xl border border-slate-200 bg-white px-3 text-left text-xs font-semibold text-slate-700 shadow-sm transition-colors active:scale-[0.98] hover:border-indigo-200 hover:text-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-slate-700 dark:bg-slate-950/80 dark:text-slate-200 dark:hover:border-violet-400/60 dark:hover:text-violet-100 dark:focus-visible:ring-violet-400"
+            aria-label={t("create.openTemplateSheet")}
+          >
+            <LayoutTemplate size={16} className="mr-2 shrink-0 text-indigo-600 dark:text-violet-200" />
+            <span className="min-w-0 flex-1 truncate">{selectedPlan.shortLabel}</span>
+            <ChevronRight size={16} className="ml-2 shrink-0 text-slate-400" />
+          </button>
+          <button
+            ref={mobilePreviewButtonRef}
+            type="button"
+            onClick={() => setMobilePreviewSheetOpen(true)}
+            className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-slate-700 shadow-sm transition-colors active:scale-[0.98] hover:border-indigo-200 hover:text-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-slate-700 dark:bg-slate-950/80 dark:text-slate-200 dark:hover:border-violet-400/60 dark:hover:text-violet-100 dark:focus-visible:ring-violet-400"
+            aria-label={t("create.openPreviewSheet")}
+            title={t("create.openPreviewSheet")}
+          >
+            <Eye size={17} />
+          </button>
+          <button
+            type="submit"
+            form={PRODUCT_CREATE_FORM_ID}
+            disabled={createProductMutation.isPending}
+            className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-indigo-600 px-3 text-sm font-semibold text-white shadow-md shadow-indigo-600/16 transition-colors active:scale-[0.98] hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:opacity-60 dark:bg-gradient-to-r dark:from-indigo-500 dark:to-violet-500 dark:shadow-violet-900/35 dark:ring-1 dark:ring-violet-300/35"
+          >
+            {createProductMutation.isPending ? <Loader2 size={15} className="mr-1.5 animate-spin" /> : null}
+            {t("create.submitShort")}
+          </button>
+        </div>
+      </div>
+
+      <Drawer.Root
+        direction="bottom"
+        handleOnly
+        open={mobileTemplateSheetOpen}
+        onOpenChange={(open) => {
+          setMobileTemplateSheetOpen(open);
+          if (!open) {
+            mobileTemplateButtonRef.current?.focus();
+          }
+        }}
+      >
+        <Drawer.Portal>
+          <Drawer.Overlay className="fixed inset-0 z-[70] bg-slate-950/42 lg:hidden" />
+          <Drawer.Content className="fixed inset-x-0 bottom-0 z-[71] flex max-h-[80dvh] flex-col overflow-hidden rounded-t-[1.5rem] border-t border-slate-200 bg-white shadow-[0_-12px_34px_rgba(15,23,42,0.16)] outline-none dark:border-slate-700 dark:bg-[#0f1726] dark:shadow-[0_-18px_42px_rgba(0,0,0,0.34)] lg:hidden">
+            <Drawer.Title className="sr-only">{t("create.mobileTemplateSheet")}</Drawer.Title>
+            <Drawer.Description className="sr-only">{t("create.templateDescription")}</Drawer.Description>
+            <Drawer.Handle className="mx-auto mt-2 flex h-7 w-24 items-center justify-center rounded-full text-slate-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:text-slate-500 dark:focus-visible:ring-violet-400">
+              <span className="h-1.5 w-12 rounded-full bg-slate-300 dark:bg-slate-600" />
+            </Drawer.Handle>
+            <div data-vaul-no-drag className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-2 [-webkit-overflow-scrolling:touch]">
+              {templatePanelContent}
+            </div>
+          </Drawer.Content>
+        </Drawer.Portal>
+      </Drawer.Root>
+
+      <Drawer.Root
+        direction="bottom"
+        handleOnly
+        open={mobilePreviewSheetOpen}
+        onOpenChange={(open) => {
+          setMobilePreviewSheetOpen(open);
+          if (!open) {
+            mobilePreviewButtonRef.current?.focus();
+          }
+        }}
+      >
+        <Drawer.Portal>
+          <Drawer.Overlay className="fixed inset-0 z-[70] bg-slate-950/42 lg:hidden" />
+          <Drawer.Content className="fixed inset-x-0 bottom-0 z-[71] flex max-h-[80dvh] flex-col overflow-hidden rounded-t-[1.5rem] border-t border-slate-200 bg-white shadow-[0_-12px_34px_rgba(15,23,42,0.16)] outline-none dark:border-slate-700 dark:bg-[#0f1726] dark:shadow-[0_-18px_42px_rgba(0,0,0,0.34)] lg:hidden">
+            <Drawer.Title className="sr-only">{t("create.mobilePreviewSheet")}</Drawer.Title>
+            <Drawer.Description className="sr-only">{selectedPlan.description}</Drawer.Description>
+            <Drawer.Handle className="mx-auto mt-2 flex h-7 w-24 items-center justify-center rounded-full text-slate-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:text-slate-500 dark:focus-visible:ring-violet-400">
+              <span className="h-1.5 w-12 rounded-full bg-slate-300 dark:bg-slate-600" />
+            </Drawer.Handle>
+            <div data-vaul-no-drag className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-2 [-webkit-overflow-scrolling:touch]">
+              {previewPanelContent}
+            </div>
+          </Drawer.Content>
+        </Drawer.Portal>
+      </Drawer.Root>
     </div>
   );
 }

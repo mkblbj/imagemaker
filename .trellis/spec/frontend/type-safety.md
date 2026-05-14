@@ -161,6 +161,75 @@ return api.createProduct({
 
 ## Local Types
 
+### Scenario: Settings migration API typing
+
+#### 1. Scope / Trigger
+- Trigger: changes to settings export/import API methods, SettingsPage import/export UI, or backend
+  `SettingsExportDocument` / `SettingsImportPreviewResponse` / `SettingsImportCommitResponse` schemas.
+- Settings migration is a cross-layer DTO contract. Keep TypeScript types aligned with backend Pydantic schemas and keep
+  backend `snake_case` field names.
+
+#### 2. Signatures
+- API methods:
+  - `api.exportSettings(): Promise<SettingsExportDocument>`
+  - `api.previewSettingsImport(payload: SettingsExportDocument): Promise<SettingsImportPreview>`
+  - `api.importSettings(payload: SettingsExportDocument): Promise<SettingsImportCommitResponse>`
+- Frontend DTOs live in `web/src/lib/types.ts` and mirror backend field names:
+  - `SettingsExportDocument`
+  - `SettingsExportMetadata`
+  - `SettingsProviderProfileExport`
+  - `SettingsProviderBindingExport`
+  - `SettingsImportPreview`
+  - `SettingsImportCommitResponse`
+
+#### 3. Contracts
+- `runtime_config` is a map of config key to JSON scalar/list values from the backend export.
+- `provider_profiles` may include `api_key`; SettingsPage must treat exported files as sensitive and show confirmation
+  copy before download.
+- `provider_bindings` references imported provider profile ids for non-mock bindings.
+- Import preview response fields are flat DTO fields such as `runtime_config_count`,
+  `provider_profile_count`, `provider_binding_count`, `includes_api_keys`, and
+  `provider_profiles_with_api_key_count`; do not invent a nested `metadata.summary` layer unless the backend schema
+  changes in the same commit.
+- Import commit returns refreshed settings/provider config data or enough data for SettingsPage to invalidate and refetch
+  `['config']`, `['provider-config']`, `['runtime-config']`, and `['session']`.
+
+#### 4. Validation & Error Matrix
+- Invalid JSON file -> SettingsPage shows a local invalid-file error before calling the API.
+- API 400 from preview/commit -> show `ApiError.detail`.
+- User cancels export/import confirmation -> do not call the API.
+- Successful import -> invalidate settings/runtime/session queries so UI reflects the imported values.
+
+#### 5. Good/Base/Bad Cases
+- Good: export downloads exactly the typed backend payload, then importing that JSON previews the same counts.
+- Good: preview with `includes_api_keys=true` shows sensitive-file warning before commit.
+- Base: import file contains `mock` provider bindings and no provider API keys.
+- Bad: frontend reads `preview.metadata.summary` when backend returns flat preview fields.
+- Bad: converting DTO fields to camelCase in `types.ts` without an explicit API mapping layer.
+
+#### 6. Tests Required
+- SettingsPage tests for export confirmation and generated JSON download path.
+- SettingsPage tests for import preview summary, API-key warning, commit confirmation, and query invalidation.
+- `pnpm --dir web build` after any settings migration DTO change.
+
+#### 7. Wrong vs Correct
+
+Wrong:
+
+```ts
+const keyCount = preview.metadata.summary.providerProfilesWithApiKeyCount;
+```
+
+Correct:
+
+```ts
+const keyCount = preview.provider_profiles_with_api_key_count;
+```
+
+Keep frontend reads aligned with the backend response shape.
+
+---
+
 Use local `type` aliases for page-only structures:
 
 - `EditableCopy` in `ProductDetailPage.tsx`.

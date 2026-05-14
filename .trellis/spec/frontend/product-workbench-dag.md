@@ -218,6 +218,78 @@
 - Do not duplicate the backend template catalog in ProductDetail. The page may use merchant-facing labels from the API,
   but the submitted `template_key` must be the backend-recognized key.
 
+### Keyboard Shortcuts and Undo/Redo
+
+#### 1. Scope / Trigger
+- Trigger: ProductDetail changes to keyboard handling, selected node groups, copy/paste, delete shortcuts, or undo/redo.
+- Shortcuts are local workbench interactions on top of persisted workflow mutations.
+
+#### 2. Signatures
+- Copy: `Ctrl/Cmd+C` stores the current selected node ids in page memory.
+- Paste: `Ctrl/Cmd+V` calls `api.duplicateWorkflowNodeGroup(productId, ...)`.
+- Duplicate: `Ctrl/Cmd+D` copies and immediately duplicates the current selected group.
+- Delete: `Delete` / `Backspace` requests confirmation, then deletes the selected node/group through persisted APIs.
+- Undo: `Ctrl/Cmd+Z` applies the latest frontend inverse action.
+- Redo: `Shift+Ctrl/Cmd+Z` or `Ctrl/Cmd+Y` reapplies the latest undone inverse action.
+- Backend duplicate endpoint: `POST /api/products/{product_id}/workflow/node-groups/duplicate`.
+
+#### 3. Contracts
+- Shortcut handling must ignore events from `input`, `textarea`, `select`, `button`, `a`, labels, role buttons,
+  contenteditable elements, and node/action controls where text editing or normal browser commands should win.
+- Shortcuts operate on the current `selectedNodeIds`; no selection means no destructive action.
+- Delete shortcut always opens confirmation. Undo/redo opens confirmation only when the step will delete nodes or edges.
+  Movement, restoration, copy, and paste execute without confirmation.
+- Copy/paste and duplicate must use backend duplication. The frontend must not locally materialize workflow rows.
+- After paste/duplicate, update `['product-workflow', productId]` with the backend response and select the created nodes.
+- Undo/redo history is an in-memory inverse-action stack scoped to the current product page. Clear it on product changes
+  and when workflow data is externally refreshed in a way that makes local history unsafe.
+- Undoing node deletion restores structure, editable config, and internal edges only. It must not restore output JSON, run
+  state, workflow run rows, generated copy, generated images, or artifact ids/URLs/paths.
+
+#### 4. Validation & Error Matrix
+- Shortcut from editable target -> do nothing and do not prevent the user's text operation.
+- Delete with no selected nodes -> do nothing.
+- Paste with empty clipboard -> do nothing or show a concise local notice; do not call the backend.
+- Backend duplicate error -> show `ApiError.detail` in the existing ProductDetail error surface.
+- Destructive undo/redo canceled by user -> keep history unchanged.
+- Undo/redo mutation failure -> show `ApiError.detail` and keep the page consistent with the latest query data.
+
+#### 5. Good/Base/Bad Cases
+- Good: select a copy/image/reference chain, press `Ctrl/Cmd+D`, and see a new selected chain with internal edges.
+- Good: delete selected nodes with confirmation, then undo and get fresh idle/configured nodes without old outputs.
+- Base: pressing `Ctrl/Cmd+C` inside an inspector text field uses normal text copy and does not replace the canvas
+  clipboard.
+- Bad: storing copied workflow nodes in localStorage or sharing them across products/tabs for the MVP.
+- Bad: undoing deletion by writing old `output_json` back into a node, which makes stale generated artifacts look valid.
+
+#### 6. Tests Required
+- Pure helper tests for shortcut target filtering and shortcut key classification.
+- Pure helper tests for undo/redo inverse-action stack behavior and artifact-field sanitization.
+- ProductDetail or focused tests that delete and destructive undo/redo request confirmation.
+- Frontend build must pass because shortcut routes touch DTOs, API helpers, and ProductDetail.
+
+#### 7. Wrong vs Correct
+
+Wrong:
+
+```tsx
+document.addEventListener("keydown", (event) => {
+  if (event.metaKey && event.key === "c") setClipboard(selectedNodeIds);
+});
+```
+
+This steals normal copy behavior from inspector fields.
+
+Correct:
+
+```tsx
+if (!isWorkflowShortcutBlockedTarget(event.target)) {
+  handleWorkflowShortcut(event);
+}
+```
+
+Filter editable/action targets before interpreting canvas shortcuts.
+
 ### 4. Validation & Error Matrix
 
 - API `ApiError.detail` is shown near the workflow action.

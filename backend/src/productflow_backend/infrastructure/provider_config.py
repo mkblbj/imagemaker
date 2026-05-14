@@ -292,6 +292,30 @@ def update_provider_binding(
     return binding
 
 
+def capability_for_provider_kind(provider_kind: str) -> str:
+    return _capability_for_kind(provider_kind)
+
+
+def validate_provider_capabilities(capabilities: list[str]) -> None:
+    _validate_capabilities(capabilities)
+
+
+def normalize_provider_binding_runtime_config(
+    *,
+    purpose: str,
+    provider_kind: str,
+    model_settings: dict[str, Any],
+    config: dict[str, Any],
+) -> dict[str, Any]:
+    _validate_binding_runtime_config(
+        purpose=purpose,
+        provider_kind=provider_kind,
+        model_settings=model_settings,
+        config=config,
+    )
+    return _normalize_binding_config(purpose=purpose, provider_kind=provider_kind, config=config)
+
+
 def resolve_text_provider_config() -> ResolvedTextProviderConfig:
     session = get_session_factory()()
     try:

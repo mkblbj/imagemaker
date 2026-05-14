@@ -18,7 +18,10 @@ from productflow_backend.application.product_workflow.artifacts import (
 )
 from productflow_backend.application.product_workflow.context import image_size_from_config, optional_config_text
 from productflow_backend.application.product_workflow.templates import materialize_canvas_template_graph
-from productflow_backend.application.product_workflow.user_templates import get_canvas_template
+from productflow_backend.application.product_workflow.user_templates import (
+    extract_reusable_node_config,
+    get_canvas_template,
+)
 from productflow_backend.application.time import now_utc
 from productflow_backend.application.use_cases import update_copy_set
 from productflow_backend.domain.durable_generation_tasks import WORKFLOW_RUN_GENERATION_TASK_CONTRACT
@@ -277,6 +280,90 @@ def apply_node_group_template_to_workflow(
         existing_nodes_by_template_key=existing_nodes_by_template_key,
         external_source_nodes_by_template_source=external_source_nodes,
     )
+    workflow.updated_at = now_utc()
+    session.flush()
+    session.expire(workflow, ["nodes", "edges"])
+    refreshed = product_workflow_graph.get_workflow_or_raise(session, workflow.id)
+    try:
+        product_workflow_graph.topological_nodes(refreshed)
+    except BusinessError:
+        session.rollback()
+        raise
+    except ValueError as exc:
+        session.rollback()
+        raise BusinessValidationError(str(exc)) from exc
+    session.commit()
+    session.expire_all()
+    return product_workflow_graph.get_workflow_or_raise(session, workflow.id)
+
+
+def duplicate_workflow_node_group(
+    session: Session,
+    *,
+    product_id: str,
+    node_ids: list[str],
+    position_x: int | None = None,
+    position_y: int | None = None,
+    offset_x: int = 48,
+    offset_y: int = 48,
+) -> ProductWorkflow:
+    if not node_ids:
+        raise BusinessValidationError("请选择要复制的节点")
+    if len(set(node_ids)) != len(node_ids):
+        raise BusinessValidationError("复制节点不能重复")
+
+    workflow = product_workflow_graph.get_active_workflow(session, product_id)
+    if workflow is None:
+        product_workflow_graph.get_product_or_raise(session, product_id)
+        raise BusinessValidationError("需要先创建或打开画布后才能复制节点")
+
+    workflow_nodes_by_id = {node.id: node for node in workflow.nodes}
+    unknown_node_ids = [node_id for node_id in node_ids if node_id not in workflow_nodes_by_id]
+    if unknown_node_ids:
+        raise BusinessValidationError("复制节点包含不属于当前画布的节点")
+
+    selected_nodes = [
+        workflow_nodes_by_id[node_id]
+        for node_id in node_ids
+        if workflow_nodes_by_id[node_id].node_type != WorkflowNodeType.PRODUCT_CONTEXT
+    ]
+    if not selected_nodes:
+        raise BusinessValidationError("请选择要复制的节点")
+
+    min_x = min(node.position_x for node in selected_nodes)
+    min_y = min(node.position_y for node in selected_nodes)
+    position_x_offset = (position_x - min_x) if position_x is not None else offset_x
+    position_y_offset = (position_y - min_y) if position_y is not None else offset_y
+
+    nodes_by_original_id: dict[str, WorkflowNode] = {}
+    for node in selected_nodes:
+        duplicated_node = WorkflowNode(
+            workflow_id=workflow.id,
+            node_type=node.node_type,
+            title=node.title,
+            position_x=node.position_x + position_x_offset,
+            position_y=node.position_y + position_y_offset,
+            config_json=extract_reusable_node_config(node),
+        )
+        session.add(duplicated_node)
+        nodes_by_original_id[node.id] = duplicated_node
+
+    session.flush()
+    for edge in workflow.edges:
+        source_node = nodes_by_original_id.get(edge.source_node_id)
+        target_node = nodes_by_original_id.get(edge.target_node_id)
+        if source_node is None or target_node is None:
+            continue
+        session.add(
+            WorkflowEdge(
+                workflow_id=workflow.id,
+                source_node_id=source_node.id,
+                target_node_id=target_node.id,
+                source_handle=edge.source_handle,
+                target_handle=edge.target_handle,
+            )
+        )
+
     workflow.updated_at = now_utc()
     session.flush()
     session.expire(workflow, ["nodes", "edges"])

@@ -19,11 +19,16 @@ from productflow_backend.application.contracts import (
 from productflow_backend.application.product_workflow_dependencies import WorkflowExecutionDependencies
 from productflow_backend.domain.enums import (
     PosterKind,
+    WorkflowNodeStatus,
+    WorkflowRunStatus,
 )
 from productflow_backend.infrastructure.db.models import (
     AppSetting,
     CopySet,
     PosterVariant,
+    WorkflowNode,
+    WorkflowNodeRun,
+    WorkflowRun,
 )
 from productflow_backend.infrastructure.db.session import get_session_factory
 
@@ -81,6 +86,24 @@ def _create_poster_variant_for_binding(
         return poster.id
     finally:
         session.close()
+
+
+def _contains_key(value: object, key: str) -> bool:
+    if isinstance(value, dict):
+        return key in value or any(_contains_key(item, key) for item in value.values())
+    if isinstance(value, list):
+        return any(_contains_key(item, key) for item in value)
+    return False
+
+
+def _contains_value(value: object, expected: object) -> bool:
+    if value == expected:
+        return True
+    if isinstance(value, dict):
+        return any(_contains_value(item, expected) for item in value.values())
+    if isinstance(value, list):
+        return any(_contains_value(item, expected) for item in value)
+    return False
 
 
 def test_product_workflow_status_endpoint_returns_lightweight_state(configured_env: Path) -> None:
@@ -605,3 +628,140 @@ def test_workflow_node_can_be_deleted_with_connected_edges(configured_env: Path)
     refreshed = client.get(f"/api/products/{product_id}/workflow")
     assert refreshed.status_code == 200
     assert copy_node["id"] not in {node["id"] for node in refreshed.json()["nodes"]}
+
+
+def test_duplicate_workflow_node_group_sanitizes_artifacts_omits_product_context_and_preserves_internal_edges(
+    configured_env: Path,
+) -> None:
+    from productflow_backend.presentation.api import create_app
+
+    app = create_app()
+    client = TestClient(app)
+    _login(client)
+
+    created = client.post(
+        "/api/products",
+        data={"name": "复制节点组商品"},
+        files={"image": ("duplicate.png", _make_demo_image_bytes(), "image/png")},
+    )
+    assert created.status_code == 201
+    product_id = created.json()["id"]
+    workflow_response = client.get(f"/api/products/{product_id}/workflow")
+    assert workflow_response.status_code == 200
+    workflow = workflow_response.json()
+    context_node = next(node for node in workflow["nodes"] if node["node_type"] == "product_context")
+    copy_node = next(node for node in workflow["nodes"] if node["node_type"] == "copy_generation")
+    image_node = next(node for node in workflow["nodes"] if node["node_type"] == "image_generation")
+    reference_node = next(node for node in workflow["nodes"] if node["node_type"] == "reference_image")
+    original_ids = {node["id"] for node in workflow["nodes"]}
+
+    session = get_session_factory()()
+    try:
+        persisted_copy = session.get(WorkflowNode, copy_node["id"])
+        persisted_image = session.get(WorkflowNode, image_node["id"])
+        persisted_reference = session.get(WorkflowNode, reference_node["id"])
+        assert persisted_copy is not None
+        assert persisted_image is not None
+        assert persisted_reference is not None
+        persisted_copy.config_json = {
+            "instruction": "保留文案方向",
+            "copy_set_id": "copy-artifact",
+        }
+        persisted_copy.output_json = {"copy_set_id": "copy-artifact", "summary": "不应复制的文案"}
+        persisted_copy.status = WorkflowNodeStatus.SUCCEEDED
+        persisted_image.config_json = {
+            "instruction": "保留生图方向",
+            "size": "1024x1024",
+            "generated_poster_variant_ids": ["poster-artifact"],
+            "filled_source_asset_ids": ["asset-artifact"],
+        }
+        persisted_image.output_json = {
+            "generated_poster_variant_ids": ["poster-artifact"],
+            "filled_source_asset_ids": ["asset-artifact"],
+        }
+        persisted_image.status = WorkflowNodeStatus.FAILED
+        persisted_image.failure_reason = "不应复制的失败状态"
+        persisted_reference.config_json = {
+            "role": "reference",
+            "label": "保留参考图标签",
+            "source_asset_ids": ["asset-artifact"],
+            "source_poster_variant_id": "poster-artifact",
+        }
+        persisted_reference.output_json = {
+            "source_asset_ids": ["asset-artifact"],
+            "image_asset_ids": ["asset-artifact"],
+        }
+        persisted_reference.status = WorkflowNodeStatus.SUCCEEDED
+        run = WorkflowRun(workflow_id=workflow["id"], status=WorkflowRunStatus.SUCCEEDED)
+        session.add(run)
+        session.flush()
+        session.add(
+            WorkflowNodeRun(
+                workflow_run_id=run.id,
+                node_id=persisted_image.id,
+                status=WorkflowNodeStatus.SUCCEEDED,
+                output_json={"poster_variant_id": "poster-artifact"},
+                poster_variant_id=None,
+            )
+        )
+        session.commit()
+    finally:
+        session.close()
+
+    duplicated = client.post(
+        f"/api/products/{product_id}/workflow/node-groups/duplicate",
+        json={
+            "node_ids": [context_node["id"], copy_node["id"], image_node["id"], reference_node["id"]],
+            "position_x": 1200,
+            "position_y": 600,
+        },
+    )
+
+    assert duplicated.status_code == 201
+    payload = duplicated.json()
+    created_nodes = [node for node in payload["nodes"] if node["id"] not in original_ids]
+    created_ids = {node["id"] for node in created_nodes}
+    assert len(created_nodes) == 3
+    assert [node["node_type"] for node in created_nodes].count("product_context") == 0
+    assert {node["node_type"] for node in created_nodes} == {
+        "copy_generation",
+        "image_generation",
+        "reference_image",
+    }
+    assert all(node["status"] == "idle" for node in created_nodes)
+    assert all(node["output_json"] is None for node in created_nodes)
+    assert all(node["failure_reason"] is None for node in created_nodes)
+    assert all(node["last_run_at"] is None for node in created_nodes)
+    assert not any(_contains_key(node["config_json"], "copy_set_id") for node in created_nodes)
+    assert not any(_contains_value(node["config_json"], "copy-artifact") for node in created_nodes)
+    assert not any(_contains_value(node["config_json"], "poster-artifact") for node in created_nodes)
+    assert not any(_contains_value(node["config_json"], "asset-artifact") for node in created_nodes)
+
+    created_by_type = {node["node_type"]: node for node in created_nodes}
+    assert created_by_type["copy_generation"]["position_x"] == 1200
+    assert created_by_type["copy_generation"]["position_y"] == 600
+    assert created_by_type["reference_image"]["config_json"] == {
+        "role": "reference",
+        "label": "保留参考图标签",
+    }
+
+    node_types_by_id = {node["id"]: node["node_type"] for node in payload["nodes"]}
+    duplicated_internal_edges = [
+        edge
+        for edge in payload["edges"]
+        if edge["source_node_id"] in created_ids and edge["target_node_id"] in created_ids
+    ]
+    assert {
+        (node_types_by_id[edge["source_node_id"]], node_types_by_id[edge["target_node_id"]])
+        for edge in duplicated_internal_edges
+    } == {("copy_generation", "image_generation"), ("image_generation", "reference_image")}
+    assert not any(
+        edge["source_node_id"] == context_node["id"] and edge["target_node_id"] in created_ids
+        for edge in payload["edges"]
+    )
+
+    session = get_session_factory()()
+    try:
+        assert session.query(WorkflowNodeRun).filter(WorkflowNodeRun.node_id.in_(created_ids)).count() == 0
+    finally:
+        session.close()

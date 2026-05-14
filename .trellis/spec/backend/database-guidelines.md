@@ -983,6 +983,91 @@ system_prompt = settings.prompt_copy_system
 
 ---
 
+## Scenario: Settings migration import and export
+
+### 1. Scope / Trigger
+- Trigger: changes to settings migration routes, settings export payloads, settings import preview/commit, provider
+  profile/binding migration, or SettingsPage import/export DTOs.
+- This is a cross-layer runtime-configuration contract spanning `Settings`, `CONFIG_DEFINITIONS`, `app_settings`,
+  `provider_profiles`, `provider_bindings`, settings schemas/routes, and frontend settings UI.
+
+### 2. Signatures
+- Export API: `GET /api/settings/export -> SettingsExportDocument`.
+- Import preview API: `POST /api/settings/import/preview -> SettingsImportPreviewResponse`.
+- Import commit API: `POST /api/settings/import -> SettingsImportCommitResponse`.
+- All three routes are under `/api/settings`, require normal admin auth, and require `require_settings_unlocked`.
+- Export document sections: `metadata`, `runtime_config`, `provider_profiles`, and `provider_bindings`.
+
+### 3. Contracts
+- Export is for frontend-operation settings only. It includes effective runtime values from every `CONFIG_DEFINITIONS`
+  key, plus active provider profiles and provider bindings.
+- Export must include provider API keys because the migration file is meant to let another machine use the same configured
+  providers. Normal non-export settings reads still must not echo secret values.
+- Export must not include deployment/infrastructure environment settings such as `DATABASE_URL`, `REDIS_URL`,
+  `SESSION_SECRET`, `ADMIN_ACCESS_KEY`, `SETTINGS_ACCESS_TOKEN`, CORS origins, ports, or storage paths.
+- `runtime_config` must contain the current effective value, not only database override rows, so a clean target machine can
+  import the same frontend-visible behavior.
+- Import preview must validate the whole document and return counts/names/flags for confirmation without mutating the
+  database.
+- Import commit must validate the same document and apply it atomically: runtime settings, provider profiles, and bindings
+  all change together or not at all.
+- Provider bindings must be validated after imported profiles are normalized so non-mock bindings never point to missing,
+  disabled, or capability-incompatible profiles.
+
+### 4. Validation & Error Matrix
+- Malformed document -> `400` with `配置文件格式不正确`.
+- Unsupported schema version -> `400` with `配置文件版本不支持`.
+- Unsupported compatibility marker -> `400` with `配置文件兼容标识不支持`.
+- Unknown runtime config key -> `400` with `未知配置项: ...`.
+- Missing runtime config key -> `400` with `配置文件缺少配置项: ...`.
+- Duplicate provider profile id -> `400` with `供应商档案不能重复`.
+- Empty provider name -> `400` with `供应商名称不能为空`.
+- Unsupported provider type/capability/kind/purpose -> `400` with a concise provider configuration error.
+- Non-mock binding without a valid compatible enabled provider profile -> `400` and no partial import.
+
+### 5. Good/Base/Bad Cases
+- Good: export from a configured workspace, import into a clean workspace, and see the same settings page values,
+  provider profiles, bindings, and provider API keys.
+- Good: preview an import file and show counts plus whether API keys are present before commit.
+- Base: importing a `mock` text/image binding uses no provider profile id.
+- Bad: exporting `ADMIN_ACCESS_KEY` or `SETTINGS_ACCESS_TOKEN`; these protect access and belong to deployment setup.
+- Bad: writing runtime rows before discovering a broken provider binding, leaving a half-imported state.
+
+### 6. Tests Required
+- Settings export regression asserting runtime config includes every `CONFIG_DEFINITIONS` key and excludes env-only keys.
+- Export regression asserting provider API keys are present only in the export document, not in ordinary settings/profile
+  reads.
+- Import preview regression asserting no database mutation.
+- Import commit regression asserting runtime config, provider profiles, and bindings update together.
+- Import failure regression asserting invalid version/config/binding keeps existing settings and providers unchanged.
+- Keep `uv run --directory backend ruff check .`, `uv run --directory backend pytest`, and frontend build/type checks green
+  after changing import/export DTOs.
+
+### 7. Wrong vs Correct
+
+Wrong:
+
+```python
+payload = {
+    "runtime_config": {row.key: row.value for row in session.scalars(select(AppSetting))},
+    "admin_access_key": get_settings().admin_access_key,
+}
+```
+
+This misses env/default effective runtime values and leaks deployment secrets.
+
+Correct:
+
+```python
+settings = get_runtime_settings()
+runtime_config = {definition.key: getattr(settings, definition.key) for definition in CONFIG_DEFINITIONS}
+```
+
+Export the frontend-operable runtime settings and provider configuration only; keep deployment secrets outside the
+migration file.
+
+---
+
 ## Naming Conventions
 
 - Table names are plural snake_case: `products`, `source_assets`, `workflow_runs`, `image_session_rounds`.

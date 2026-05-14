@@ -6,6 +6,7 @@ import type {
   ConfigUpdateRequest,
   CopySet,
   CopySetUpdateRequest,
+  DuplicateWorkflowNodeGroupInput,
   GalleryEntry,
   GalleryEntryListResponse,
   GenerationQueueOverview,
@@ -29,6 +30,9 @@ import type {
   ProductListResponse,
   RuntimeConfig,
   SettingsLockState,
+  SettingsExportPayload,
+  SettingsImportCommitResponse,
+  SettingsImportPreviewResponse,
   SessionState,
   UpdateUserTemplateGroupInput,
 } from "./types";
@@ -153,6 +157,21 @@ export const api = {
   updateConfig(payload: ConfigUpdateRequest): Promise<ConfigResponse> {
     return request("/api/settings", {
       method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  },
+  exportSettings(): Promise<SettingsExportPayload> {
+    return request("/api/settings/export");
+  },
+  previewSettingsImport(payload: SettingsExportPayload): Promise<SettingsImportPreviewResponse> {
+    return request("/api/settings/import/preview", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  importSettings(payload: SettingsExportPayload): Promise<SettingsImportCommitResponse> {
+    return request("/api/settings/import", {
+      method: "POST",
       body: JSON.stringify(payload),
     });
   },
@@ -292,6 +311,15 @@ export const api = {
   },
   applyWorkflowTemplateGroup(productId: string, input: ApplyWorkflowTemplateGroupInput): Promise<ProductWorkflow> {
     return request(`/api/products/${productId}/workflow/template-groups`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+  duplicateWorkflowNodeGroup(
+    productId: string,
+    input: DuplicateWorkflowNodeGroupInput,
+  ): Promise<ProductWorkflow> {
+    return request(`/api/products/${productId}/workflow/node-groups/duplicate`, {
       method: "POST",
       body: JSON.stringify(input),
     });

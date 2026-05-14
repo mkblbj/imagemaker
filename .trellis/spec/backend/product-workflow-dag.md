@@ -1096,6 +1096,85 @@ Index(
 Plan the node IDs first, reuse only overlapping active runs for normal control flow, enforce the same-node active invariant
 in the database, and handle `IntegrityError` by reloading the existing overlapping active run.
 
+## Scenario: Workflow node-group duplicate
+
+### 1. Scope / Trigger
+- Trigger: changes to canvas copy/paste, node-group duplicate routes, reusable node config sanitization, or undo restore of
+  deleted workflow nodes.
+- Node-group duplication creates ordinary workflow rows for repeated workbench modules without reusing generated artifacts
+  or run state.
+
+### 2. Signatures
+- API: `POST /api/products/{product_id}/workflow/node-groups/duplicate -> ProductWorkflowResponse`.
+- Request fields:
+  - `node_ids: list[str]`
+  - `position_x: int | None`
+  - `position_y: int | None`
+  - `offset_x: int`
+  - `offset_y: int`
+- Application use case returns the refreshed active `ProductWorkflow`.
+
+### 3. Contracts
+- Duplicate operates only on nodes in the product's active workflow.
+- `product_context` nodes are never duplicated. If the selected group contains only product context nodes, the request is
+  invalid.
+- Duplicated nodes keep node type, title, relative position, and normalized editable `config_json`.
+- Duplicated nodes start with idle/default run state and empty outputs. Do not copy `output_json`, failure reason,
+  `last_run_at`, workflow-node-run rows, workflow-run rows, `CopySet`, `PosterVariant`, `SourceAsset`, image-session
+  assets, or gallery artifacts.
+- Internal edges are recreated only when both source and target are duplicated. External edges to unselected nodes are not
+  recreated.
+- Reusable config sanitization must match user-template boundaries: strip known artifact fields and reject unknown
+  artifact-shaped config keys ending in `_id`, `_ids`, `_url`, or `_path`.
+- The insertion position may be anchored to a requested point or use a deterministic offset from the selected group.
+
+### 4. Validation & Error Matrix
+- Empty `node_ids` -> `400` with a concise selection-required message.
+- Duplicate node ids in request -> `400` with duplicate selection message.
+- Unknown product or no active workflow -> existing product/workflow not-found behavior.
+- Node outside active workflow -> `400` with current-canvas ownership message.
+- Selected group contains no duplicable node after excluding `product_context` -> `400`.
+- Sanitization finds artifact-shaped config -> `400` with reusable-config validation message.
+
+### 5. Good/Base/Bad Cases
+- Good: duplicate a copy -> image -> reference chain and get three new nodes plus two internal edges.
+- Good: duplicate a filled reference node and preserve reusable `role` / `label` while dropping asset ids and output JSON.
+- Base: duplicate a group selected with the product context plus copy/image nodes; only copy/image nodes are recreated.
+- Bad: duplicate a node with `output_json.copy_set_id` or `source_asset_ids` and make the new node appear already
+  generated.
+- Bad: recreate edges from the copied group back to original unselected nodes, which changes the user's graph topology.
+
+### 6. Tests Required
+- API regression for duplicating selected nodes with internal edges.
+- Regression that `product_context` is skipped and a product-context-only selection is rejected.
+- Regression that output JSON, run state, run rows, and artifact-shaped config are not copied.
+- Regression that duplicated nodes are selected/usable through normal frontend workflow payloads.
+
+### 7. Wrong vs Correct
+
+Wrong:
+
+```python
+new_node = WorkflowNode(**old_node.__dict__)
+```
+
+This copies database identity, output/run fields, and artifact references.
+
+Correct:
+
+```python
+new_node = WorkflowNode(
+    workflow_id=workflow.id,
+    node_type=old_node.node_type,
+    title=old_node.title,
+    config_json=_extract_reusable_config(old_node),
+)
+```
+
+Create a fresh workflow node from reusable intent only, then recreate selected internal edges.
+
+---
+
 ## Scenario: Product context singleton and direct image generation
 
 ### 1. Scope / Trigger

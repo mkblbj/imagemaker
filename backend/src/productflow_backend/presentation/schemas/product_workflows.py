@@ -251,6 +251,14 @@ class ApplyWorkflowTemplateGroupRequest(BaseModel):
     position_y: int = 0
 
 
+class DuplicateWorkflowNodeGroupRequest(BaseModel):
+    node_ids: list[str] = Field(default_factory=list)
+    position_x: int | None = None
+    position_y: int | None = None
+    offset_x: int = 48
+    offset_y: int = 48
+
+
 class CreateUserTemplateGroupRequest(BaseModel):
     title: str = Field(min_length=1, max_length=255)
     description: str | None = Field(default=None, max_length=1000)

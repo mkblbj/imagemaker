@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useId, useState } from "react";
-import type { FormEvent, ReactNode } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import type { ChangeEvent, FormEvent, ReactNode, RefObject } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Box,
   Check,
   CheckCircle2,
+  Download,
+  FileJson,
   Image,
   KeyRound,
   Link2,
@@ -42,10 +44,20 @@ import type {
   ProviderProfile,
   ProviderProfileCreateRequest,
   ProviderProfileUpdateRequest,
+  SettingsExportPayload,
+  SettingsImportPreviewResponse,
 } from "../lib/types";
 
 type DraftValue = string | boolean | string[];
-type SettingsSectionId = "providers" | "text" | "image" | "prompts" | "upload" | "queue" | "security";
+export type SettingsSectionId =
+  | "providers"
+  | "text"
+  | "image"
+  | "prompts"
+  | "upload"
+  | "queue"
+  | "security"
+  | "migration";
 
 interface DraftSnapshot {
   value: DraftValue;
@@ -176,9 +188,24 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
     groupKey: "settings.groupSecurity",
     icon: ShieldCheck,
   },
+  {
+    id: "migration",
+    labelKey: "settings.section.migration",
+    descriptionKey: "settings.section.migrationDescription",
+    groupKey: "settings.groupSecurity",
+    icon: FileJson,
+  },
 ];
 
 const SETTINGS_GROUPS: TranslationKey[] = ["settings.groupProviders", "settings.groupWorkflow", "settings.groupSecurity"];
+
+export function settingsSectionIds(): SettingsSectionId[] {
+  return SETTINGS_SECTIONS.map((section) => section.id);
+}
+
+export function shouldShowSettingsMigrationPanel(section: SettingsSectionId): boolean {
+  return section === "migration";
+}
 
 const PROVIDER_CAPABILITY_OPTIONS: Array<{ value: ProviderCapability; labelKey: TranslationKey }> = [
   { value: "text_responses", labelKey: "settings.provider.capability.textResponses" },
@@ -406,6 +433,191 @@ function itemsForSection(config: ConfigResponse | undefined, section: SettingsSe
     return items.filter((item) => item.category === "安全与运维");
   }
   return [];
+}
+
+export function settingsExportFilename(exportedAt: string | null | undefined): string {
+  if (!exportedAt) {
+    return "productflow-settings.json";
+  }
+  const date = new Date(exportedAt);
+  if (Number.isNaN(date.getTime())) {
+    return "productflow-settings.json";
+  }
+  return `productflow-settings-${date.toISOString().slice(0, 19).replace("T", "-").replace(/:/g, "")}.json`;
+}
+
+export function settingsImportSummaryCounts(preview: SettingsImportPreviewResponse): {
+  runtimeConfigCount: number;
+  providerProfileCount: number;
+  providerBindingCount: number;
+  providerProfilesWithApiKeyCount: number;
+} {
+  return {
+    runtimeConfigCount: preview.runtime_config_count,
+    providerProfileCount: preview.provider_profile_count,
+    providerBindingCount: preview.provider_binding_count,
+    providerProfilesWithApiKeyCount: preview.provider_profiles_with_api_key_count,
+  };
+}
+
+function downloadSettingsExport(payload: SettingsExportPayload): void {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = window.URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = settingsExportFilename(payload.metadata.exported_at);
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isSettingsExportPayload(value: unknown): value is SettingsExportPayload {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return (
+    isRecord(value.metadata) &&
+    isRecord(value.runtime_config) &&
+    Array.isArray(value.provider_profiles) &&
+    Array.isArray(value.provider_bindings)
+  );
+}
+
+interface SettingsMigrationPanelProps {
+  importInputRef: RefObject<HTMLInputElement | null>;
+  importFileName: string;
+  importPreview: SettingsImportPreviewResponse | null;
+  exportBusy: boolean;
+  importPreviewBusy: boolean;
+  importCommitBusy: boolean;
+  onRequestExport: () => void;
+  onChooseImportFile: () => void;
+  onImportFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  onCommitImport: () => void;
+  onCancelImport: () => void;
+}
+
+function SettingsMigrationPanel({
+  importInputRef,
+  importFileName,
+  importPreview,
+  exportBusy,
+  importPreviewBusy,
+  importCommitBusy,
+  onRequestExport,
+  onChooseImportFile,
+  onImportFileChange,
+  onCommitImport,
+  onCancelImport,
+}: SettingsMigrationPanelProps) {
+  const { t } = useI18n();
+  const counts = importPreview ? settingsImportSummaryCounts(importPreview) : null;
+  return (
+    <section className={`${PANEL_CLASS} mb-8`}>
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+        <div className="max-w-2xl">
+          <div className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 dark:border-amber-400/35 dark:bg-amber-500/12 dark:text-amber-200">
+            <KeyRound size={13} className="mr-1.5" />
+            {t("settings.migration.sensitiveLabel")}
+          </div>
+          <h2 className="mt-3 text-lg font-semibold text-slate-950 dark:text-white">
+            {t("settings.migration.title")}
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
+            {t("settings.migration.description")}
+          </p>
+          <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800 dark:border-amber-400/35 dark:bg-amber-500/10 dark:text-amber-100">
+            {t("settings.migration.sensitiveWarning")}
+          </p>
+        </div>
+        <div className="flex shrink-0 flex-col gap-2 sm:flex-row lg:flex-col">
+          <button
+            type="button"
+            onClick={onRequestExport}
+            disabled={exportBusy}
+            className={SETTINGS_MAIN_ACTION_CLASS}
+          >
+            {exportBusy ? <Loader2 size={14} className="mr-2 animate-spin" /> : <Download size={14} className="mr-2" />}
+            {t("settings.migration.export")}
+          </button>
+          <button
+            type="button"
+            onClick={onChooseImportFile}
+            disabled={importPreviewBusy || importCommitBusy}
+            className="inline-flex h-11 items-center justify-center rounded-lg border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-[#111b2d] dark:text-slate-100 dark:hover:bg-slate-800"
+          >
+            {importPreviewBusy ? (
+              <Loader2 size={14} className="mr-2 animate-spin" />
+            ) : (
+              <UploadCloud size={14} className="mr-2" />
+            )}
+            {t("settings.migration.import")}
+          </button>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={onImportFileChange}
+          />
+        </div>
+      </div>
+
+      {importPreview && counts ? (
+        <div className="mt-5 rounded-xl border border-indigo-200 bg-indigo-50/70 p-4 dark:border-violet-400/35 dark:bg-violet-500/10">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <div className="flex items-center text-sm font-semibold text-indigo-800 dark:text-violet-100">
+                <FileJson size={15} className="mr-2" />
+                {t("settings.migration.previewTitle")}
+              </div>
+              <p className="mt-1 text-xs text-indigo-700/80 dark:text-violet-100/75">
+                {t("settings.migration.previewFile", { file: importFileName })}
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={onCancelImport}
+                disabled={importCommitBusy}
+                className="h-9 rounded-lg px-3 text-sm font-medium text-slate-600 hover:bg-white/70 disabled:opacity-50 dark:text-slate-200 dark:hover:bg-white/10"
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                type="button"
+                onClick={onCommitImport}
+                disabled={importCommitBusy}
+                className={SETTINGS_MAIN_ACTION_CLASS}
+              >
+                {importCommitBusy ? <Loader2 size={14} className="mr-2 animate-spin" /> : <Check size={14} className="mr-2" />}
+                {t("settings.migration.commitImport")}
+              </button>
+            </div>
+          </div>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-lg bg-white px-3 py-2 text-xs text-slate-600 shadow-sm dark:bg-[#101827] dark:text-slate-300">
+              {t("settings.migration.runtimeCount", { count: counts.runtimeConfigCount })}
+            </div>
+            <div className="rounded-lg bg-white px-3 py-2 text-xs text-slate-600 shadow-sm dark:bg-[#101827] dark:text-slate-300">
+              {t("settings.migration.profileCount", { count: counts.providerProfileCount })}
+            </div>
+            <div className="rounded-lg bg-white px-3 py-2 text-xs text-slate-600 shadow-sm dark:bg-[#101827] dark:text-slate-300">
+              {t("settings.migration.bindingCount", { count: counts.providerBindingCount })}
+            </div>
+            <div className="rounded-lg bg-white px-3 py-2 text-xs text-slate-600 shadow-sm dark:bg-[#101827] dark:text-slate-300">
+              {t("settings.migration.keyCount", { count: counts.providerProfilesWithApiKeyCount })}
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
 }
 
 interface SettingsFormFieldProps {
@@ -1332,6 +1544,7 @@ export function SettingsPage() {
   const { t } = useI18n();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const importInputRef = useRef<HTMLInputElement | null>(null);
   const [drafts, setDrafts] = useState<Record<string, DraftValue>>({});
   const [draftSnapshots, setDraftSnapshots] = useState<Record<string, DraftSnapshot>>({});
   const [secretTouched, setSecretTouched] = useState<Record<string, boolean>>({});
@@ -1348,6 +1561,10 @@ export function SettingsPage() {
   const [togglingProviderProfileId, setTogglingProviderProfileId] = useState<string | null>(null);
   const [textDraft, setTextDraft] = useState<TextBindingDraft>(textBindingDraft(undefined));
   const [imageDraft, setImageDraft] = useState<ImageBindingDraft>(imageBindingDraft(undefined));
+  const [exportConfirmOpen, setExportConfirmOpen] = useState(false);
+  const [importPayload, setImportPayload] = useState<SettingsExportPayload | null>(null);
+  const [importPreview, setImportPreview] = useState<SettingsImportPreviewResponse | null>(null);
+  const [importFileName, setImportFileName] = useState("");
 
   const lockStateQuery = useQuery({
     queryKey: ["settings-lock-state"],
@@ -1439,6 +1656,94 @@ export function SettingsPage() {
       setError(mutationError instanceof ApiError ? mutationError.detail : t("settings.restoreFailed"));
     },
     onSettled: () => setResettingKey(null),
+  });
+
+  const exportSettingsMutation = useMutation({
+    mutationFn: api.exportSettings,
+    onSuccess: (payload) => {
+      downloadSettingsExport(payload);
+      setExportConfirmOpen(false);
+      setError("");
+      setSavedMessage(t("settings.migration.exported"));
+    },
+    onError: (mutationError) => {
+      setExportConfirmOpen(false);
+      setSavedMessage("");
+      setError(mutationError instanceof ApiError ? mutationError.detail : t("settings.migration.exportFailed"));
+    },
+  });
+
+  const previewImportMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const text = await file.text();
+      let payload: unknown;
+      try {
+        payload = JSON.parse(text) as unknown;
+      } catch {
+        throw new Error(t("settings.migration.invalidJson"));
+      }
+      if (!isSettingsExportPayload(payload)) {
+        throw new Error(t("settings.migration.invalidFile"));
+      }
+      const preview = await api.previewSettingsImport(payload);
+      return { fileName: file.name, payload, preview };
+    },
+    onSuccess: ({ fileName, payload, preview }) => {
+      setImportFileName(fileName);
+      setImportPayload(payload);
+      setImportPreview(preview);
+      setError("");
+      setSavedMessage("");
+    },
+    onError: (mutationError) => {
+      setImportFileName("");
+      setImportPayload(null);
+      setImportPreview(null);
+      setSavedMessage("");
+      setError(
+        mutationError instanceof ApiError
+          ? mutationError.detail
+          : mutationError instanceof Error
+            ? mutationError.message
+            : t("settings.migration.previewFailed"),
+      );
+    },
+  });
+
+  const commitImportMutation = useMutation({
+    mutationFn: () => {
+      if (!importPayload) {
+        throw new Error(t("settings.migration.missingPreview"));
+      }
+      return api.importSettings(importPayload);
+    },
+    onSuccess: async (data) => {
+      if (data.config) {
+        queryClient.setQueryData(["config"], data.config);
+      }
+      if (data.provider_config) {
+        queryClient.setQueryData(["provider-config"], data.provider_config);
+      }
+      await queryClient.invalidateQueries({ queryKey: ["config"] });
+      await queryClient.invalidateQueries({ queryKey: ["provider-config"] });
+      await queryClient.invalidateQueries({ queryKey: ["runtime-config"] });
+      await queryClient.invalidateQueries({ queryKey: ["session"] });
+      setImportPayload(null);
+      setImportPreview(null);
+      setImportFileName("");
+      setError("");
+      setSavedMessage(t("settings.migration.imported"));
+    },
+    onError: (mutationError) => {
+      setSavedMessage("");
+      setError(
+        mutationError instanceof ApiError
+          ? mutationError.detail
+          : mutationError instanceof Error
+            ? mutationError.message
+            : t("settings.migration.importFailed"),
+      );
+    },
   });
 
   const unlockMutation = useMutation({
@@ -1603,6 +1908,17 @@ export function SettingsPage() {
     setError("");
     setSavedMessage("");
     unlockMutation.mutate();
+  };
+
+  const handleImportFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    event.currentTarget.value = "";
+    if (!file) {
+      return;
+    }
+    setError("");
+    setSavedMessage("");
+    previewImportMutation.mutate(file);
   };
 
   const providerProfilePending =
@@ -1809,6 +2125,29 @@ export function SettingsPage() {
                       {t(activeMeta.descriptionKey)}
                     </p>
                   </div>
+                  {shouldShowSettingsMigrationPanel(activeSection) ? (
+                    <SettingsMigrationPanel
+                      importInputRef={importInputRef}
+                      importFileName={importFileName}
+                      importPreview={importPreview}
+                      exportBusy={exportSettingsMutation.isPending}
+                      importPreviewBusy={previewImportMutation.isPending}
+                      importCommitBusy={commitImportMutation.isPending}
+                      onRequestExport={() => {
+                        setError("");
+                        setSavedMessage("");
+                        setExportConfirmOpen(true);
+                      }}
+                      onChooseImportFile={() => importInputRef.current?.click()}
+                      onImportFileChange={handleImportFileChange}
+                      onCommitImport={() => commitImportMutation.mutate()}
+                      onCancelImport={() => {
+                        setImportPayload(null);
+                        setImportPreview(null);
+                        setImportFileName("");
+                      }}
+                    />
+                  ) : null}
                   {error ? (
                     <div className="mb-5 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-400/35 dark:bg-red-500/10 dark:text-red-200">
                       {error}
@@ -1994,6 +2333,17 @@ export function SettingsPage() {
             </div>
           ) : null}
         </div>
+        <ConfirmDialog
+          open={exportConfirmOpen}
+          title={t("settings.migration.exportConfirmTitle")}
+          description={t("settings.migration.exportConfirm")}
+          confirmLabel={t("settings.migration.exportConfirmLabel")}
+          cancelLabel={t("common.cancel")}
+          busy={exportSettingsMutation.isPending}
+          destructive={false}
+          onClose={() => setExportConfirmOpen(false)}
+          onConfirm={() => exportSettingsMutation.mutate()}
+        />
         <ConfirmDialog
           open={Boolean(pendingDeleteProviderProfile)}
           title={t("settings.provider.deleteConfirmTitle")}

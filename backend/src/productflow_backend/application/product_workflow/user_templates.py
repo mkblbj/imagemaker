@@ -191,7 +191,7 @@ def create_user_canvas_template_from_workflow_nodes(
                 title=node.title,
                 position_x=node.position_x - min_x,
                 position_y=node.position_y - min_y,
-                config_json=_extract_reusable_config(node),
+                config_json=extract_reusable_node_config(node),
             )
             for node in selected_nodes
         ),
@@ -303,7 +303,7 @@ def _selected_internal_edges(
     return template_edges
 
 
-def _extract_reusable_config(node: WorkflowNode) -> dict[str, Any]:
+def extract_reusable_node_config(node: WorkflowNode) -> dict[str, Any]:
     reusable_config = _sanitize_reusable_config(node.config_json or {})
     return _normalize_template_node_config(node.node_type, reusable_config)
 

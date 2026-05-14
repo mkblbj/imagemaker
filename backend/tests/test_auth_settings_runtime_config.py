@@ -275,6 +275,220 @@ def test_settings_api_persists_database_overrides(configured_env: Path) -> None:
     assert "未知配置项: image_provider_kind" in legacy_provider_update.json()["detail"]
 
 
+def test_settings_export_includes_migratable_runtime_config_provider_secrets_and_excludes_env_only(
+    configured_env: Path,
+) -> None:
+    from productflow_backend.presentation.api import create_app
+
+    app = create_app()
+    client = TestClient(app)
+    _login(client)
+    _unlock_settings(client)
+
+    updated = client.patch(
+        "/api/settings",
+        json={"values": {"generation_max_concurrent_tasks": 2, "deletion_enabled": True}},
+    )
+    assert updated.status_code == 200
+
+    created_profile = client.post(
+        "/api/settings/provider-profiles",
+        json={
+            "name": "导出网关",
+            "base_url": "https://export.example/v1",
+            "api_key": "export-secret-key",
+            "capabilities": ["text_responses", "image_images"],
+            "default_models": {"brief_model": "brief-export", "copy_model": "copy-export"},
+            "config": {"note": "exportable"},
+            "enabled": True,
+        },
+    )
+    assert created_profile.status_code == 200
+    profile_id = created_profile.json()["id"]
+
+    text_binding = client.patch(
+        "/api/settings/provider-bindings/text",
+        json={
+            "provider_kind": "openai",
+            "provider_profile_id": profile_id,
+            "model_settings": {"brief_model": "brief-export", "copy_model": "copy-export"},
+            "config": {},
+        },
+    )
+    assert text_binding.status_code == 200
+
+    exported = client.get("/api/settings/export")
+
+    assert exported.status_code == 200
+    payload = exported.json()
+    assert payload["metadata"]["schema_version"] == 1
+    assert payload["metadata"]["app"] == "ProductFlow"
+    assert payload["metadata"]["app_version"]
+    assert payload["runtime_config"]["generation_max_concurrent_tasks"] == 2
+    assert payload["runtime_config"]["deletion_enabled"] is True
+    assert set(RUNTIME_CONFIG_KEYS).issubset(payload["runtime_config"])
+    assert {
+        "admin_access_key",
+        "settings_access_token",
+        "session_secret",
+        "database_url",
+        "redis_url",
+        "backend_cors_origins",
+        "app_port",
+        "storage_root",
+    }.isdisjoint(payload["runtime_config"])
+    assert "super-secret-settings-token" not in str(payload)
+    assert "super-secret-admin-key" not in str(payload)
+    assert "super-secret-session-key-123" not in str(payload)
+    assert "sqlite:///" not in str(payload)
+    assert "redis://localhost:6379/9" not in str(payload)
+
+    exported_profile = next(profile for profile in payload["provider_profiles"] if profile["id"] == profile_id)
+    assert exported_profile["api_key"] == "export-secret-key"
+    assert exported_profile["base_url"] == "https://export.example/v1"
+    assert exported_profile["capabilities"] == ["text_responses", "image_images"]
+    exported_bindings = {binding["purpose"]: binding for binding in payload["provider_bindings"]}
+    assert exported_bindings["text"]["provider_kind"] == "openai"
+    assert exported_bindings["text"]["provider_profile_id"] == profile_id
+
+
+def test_settings_import_preview_and_commit_replaces_runtime_and_provider_config(configured_env: Path) -> None:
+    from productflow_backend.presentation.api import create_app
+
+    app = create_app()
+    client = TestClient(app)
+    _login(client)
+    _unlock_settings(client)
+
+    exported = client.get("/api/settings/export")
+    assert exported.status_code == 200
+    document = exported.json()
+    imported_profile_id = "11111111-1111-4111-8111-111111111111"
+    document["runtime_config"]["generation_max_concurrent_tasks"] = 4
+    document["runtime_config"]["deletion_enabled"] = True
+    document["provider_profiles"] = [
+        {
+            "id": imported_profile_id,
+            "name": "导入网关",
+            "provider_type": "openai_compatible",
+            "base_url": "https://import.example/v1",
+            "api_key": "import-secret-key",
+            "capabilities": ["text_responses", "image_responses"],
+            "default_models": {
+                "brief_model": "brief-import",
+                "copy_model": "copy-import",
+                "image_model": "image-import",
+            },
+            "config": {"region": "local"},
+            "enabled": True,
+        }
+    ]
+    document["provider_bindings"] = [
+        {
+            "purpose": "text",
+            "provider_kind": "openai",
+            "provider_profile_id": imported_profile_id,
+            "model_settings": {"brief_model": "brief-import", "copy_model": "copy-import"},
+            "config": {},
+        },
+        {
+            "purpose": "image",
+            "provider_kind": "openai_responses",
+            "provider_profile_id": imported_profile_id,
+            "model_settings": {"model": "image-import"},
+            "config": {"responses_background_enabled": True, "images_quality": "high"},
+        },
+    ]
+
+    preview = client.post("/api/settings/import/preview", json=document)
+    assert preview.status_code == 200
+    assert preview.json() == {
+        "schema_version": 1,
+        "runtime_config_count": len(RUNTIME_CONFIG_KEYS),
+        "provider_profile_count": 1,
+        "provider_binding_count": 2,
+        "provider_profile_names": ["导入网关"],
+        "provider_binding_purposes": ["image", "text"],
+        "includes_api_keys": True,
+        "provider_profiles_with_api_key_count": 1,
+    }
+
+    imported = client.post("/api/settings/import", json=document)
+    assert imported.status_code == 200
+    response_payload = imported.json()
+    imported_items = {item["key"]: item for item in response_payload["config"]["items"]}
+    assert imported_items["generation_max_concurrent_tasks"]["value"] == 4
+    assert imported_items["deletion_enabled"]["value"] is True
+    assert "import-secret-key" not in str(response_payload)
+
+    session = get_session_factory()()
+    try:
+        assert session.get(AppSetting, "generation_max_concurrent_tasks").value == "4"
+        assert session.get(AppSetting, "deletion_enabled").value == "true"
+        profiles = session.scalars(select(ProviderProfile)).all()
+        assert [profile.id for profile in profiles] == [imported_profile_id]
+        assert profiles[0].api_key == "import-secret-key"
+        bindings = {binding.purpose: binding for binding in session.scalars(select(ProviderBinding)).all()}
+        assert bindings["text"].provider_profile_id == imported_profile_id
+        assert bindings["image"].provider_kind == "openai_responses"
+        assert bindings["image"].config_json == {"responses_background_enabled": True}
+    finally:
+        session.close()
+
+
+def test_settings_import_rejects_unknown_version_and_rolls_back_invalid_bindings(configured_env: Path) -> None:
+    from productflow_backend.presentation.api import create_app
+
+    app = create_app()
+    client = TestClient(app)
+    _login(client)
+    _unlock_settings(client)
+
+    exported = client.get("/api/settings/export")
+    assert exported.status_code == 200
+    document = exported.json()
+
+    unknown_version = {**document, "metadata": {**document["metadata"], "schema_version": 99}}
+    rejected_version = client.post("/api/settings/import/preview", json=unknown_version)
+    assert rejected_version.status_code == 400
+    assert rejected_version.json()["detail"] == "配置文件版本不支持"
+
+    invalid_binding = dict(document)
+    invalid_binding["runtime_config"] = {**document["runtime_config"], "generation_max_concurrent_tasks": 5}
+    invalid_binding["provider_profiles"] = []
+    invalid_binding["provider_bindings"] = [
+        {
+            "purpose": "text",
+            "provider_kind": "openai",
+            "provider_profile_id": "missing-profile",
+            "model_settings": {"brief_model": "brief", "copy_model": "copy"},
+            "config": {},
+        },
+        {
+            "purpose": "image",
+            "provider_kind": "mock",
+            "provider_profile_id": None,
+            "model_settings": {"model": "mock-image"},
+            "config": {},
+        },
+    ]
+    rejected_import = client.post("/api/settings/import", json=invalid_binding)
+    assert rejected_import.status_code == 400
+    assert "供应商不存在" in rejected_import.json()["detail"]
+
+    assert get_runtime_settings().generation_max_concurrent_tasks == 3
+    session = get_session_factory()()
+    try:
+        assert session.get(AppSetting, "generation_max_concurrent_tasks") is None
+        bindings = {binding.purpose: binding for binding in session.scalars(select(ProviderBinding)).all()}
+        assert {purpose: binding.provider_kind for purpose, binding in bindings.items()} == {
+            "image": "mock",
+            "text": "mock",
+        }
+    finally:
+        session.close()
+
+
 def test_provider_bootstrap_runs_on_app_startup(configured_env: Path) -> None:
     from productflow_backend.presentation.api import create_app
 

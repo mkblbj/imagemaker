@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import secrets
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy import select
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
+from pydantic import ValidationError
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from productflow_backend import __version__
+from productflow_backend.application.time import now_utc
 from productflow_backend.config import (
     CONFIG_DEFINITION_BY_KEY,
     CONFIG_DEFINITIONS,
@@ -19,16 +23,24 @@ from productflow_backend.config import (
     normalize_image_generation_size,
     parse_image_tool_allowed_fields,
 )
-from productflow_backend.infrastructure.db.models import AppSetting
+from productflow_backend.infrastructure.db.models import AppSetting, ProviderBinding, ProviderProfile
 from productflow_backend.infrastructure.provider_config import (
+    IMAGE_PROVIDER_KINDS,
+    PROVIDER_CAPABILITIES,
+    PROVIDER_PURPOSES,
+    PROVIDER_TYPE_OPENAI_COMPATIBLE,
+    TEXT_PROVIDER_KINDS,
     UNSET_PROVIDER_FIELD,
     archive_provider_profile,
+    capability_for_provider_kind,
     create_provider_profile,
     ensure_provider_config_bootstrapped,
     list_provider_bindings,
     list_provider_profiles,
+    normalize_provider_binding_runtime_config,
     update_provider_binding,
     update_provider_profile,
+    validate_provider_capabilities,
 )
 from productflow_backend.presentation.deps import get_session, require_admin
 from productflow_backend.presentation.schemas.settings import (
@@ -43,11 +55,27 @@ from productflow_backend.presentation.schemas.settings import (
     ProviderProfileResponse,
     ProviderProfileUpdateRequest,
     RuntimeConfigResponse,
+    SettingsExportDocument,
+    SettingsExportMetadataResponse,
+    SettingsImportCommitResponse,
+    SettingsImportPreviewResponse,
     SettingsLockStateResponse,
+    SettingsProviderBindingExport,
+    SettingsProviderProfileExport,
     SettingsUnlockRequest,
 )
 
 router = APIRouter(prefix="/api/settings", tags=["settings"], dependencies=[Depends(require_admin)])
+SETTINGS_EXPORT_SCHEMA_VERSION = 1
+SETTINGS_EXPORT_COMPATIBILITY = "productflow-settings-v1"
+
+
+@dataclass(frozen=True, slots=True)
+class _SettingsImportBundle:
+    normalized_runtime_config: dict[str, str]
+    provider_profiles: list[dict[str, Any]]
+    provider_bindings: list[dict[str, Any]]
+    preview: SettingsImportPreviewResponse
 
 
 def _settings_token_configured() -> bool:
@@ -154,6 +182,248 @@ def _serialize_provider_config(session: Session) -> ProviderConfigResponse:
     )
 
 
+def _export_config_value(value: Any, *, input_type: str) -> str | int | bool | list[str] | None:
+    if isinstance(value, Path):
+        return str(value)
+    if input_type == "multi_select":
+        return list(parse_image_tool_allowed_fields(value))
+    return value
+
+
+def _build_settings_export_document(session: Session) -> SettingsExportDocument:
+    ensure_provider_config_bootstrapped(session)
+    settings = get_runtime_settings()
+    runtime_config = {
+        definition.key: _export_config_value(getattr(settings, definition.key), input_type=definition.input_type)
+        for definition in CONFIG_DEFINITIONS
+    }
+    profiles = session.scalars(
+        select(ProviderProfile)
+        .where(ProviderProfile.archived_at.is_(None))
+        .order_by(ProviderProfile.created_at, ProviderProfile.name)
+    ).all()
+    bindings = session.scalars(select(ProviderBinding).order_by(ProviderBinding.purpose)).all()
+    return SettingsExportDocument(
+        metadata=SettingsExportMetadataResponse(
+            schema_version=SETTINGS_EXPORT_SCHEMA_VERSION,
+            exported_at=now_utc(),
+            app="ProductFlow",
+            app_version=__version__,
+            compatibility=SETTINGS_EXPORT_COMPATIBILITY,
+        ),
+        runtime_config=runtime_config,
+        provider_profiles=[
+            SettingsProviderProfileExport(
+                id=profile.id,
+                name=profile.name,
+                provider_type=profile.provider_type,
+                base_url=profile.base_url,
+                api_key=profile.api_key,
+                capabilities=list(profile.capabilities_json or []),
+                default_models=dict(profile.default_models_json or {}),
+                config=dict(profile.config_json or {}),
+                enabled=profile.enabled,
+            )
+            for profile in profiles
+        ],
+        provider_bindings=[
+            SettingsProviderBindingExport(
+                purpose=binding.purpose,
+                provider_kind=binding.provider_kind,
+                provider_profile_id=binding.provider_profile_id,
+                model_settings=dict(binding.model_settings_json or {}),
+                config=dict(binding.config_json or {}),
+            )
+            for binding in bindings
+        ],
+    )
+
+
+def _parse_settings_import_document(payload: Any) -> SettingsExportDocument:
+    try:
+        document = SettingsExportDocument.model_validate(payload)
+    except ValidationError as exc:
+        raise ValueError("配置文件格式不正确") from exc
+    if document.metadata.schema_version != SETTINGS_EXPORT_SCHEMA_VERSION:
+        raise ValueError("配置文件版本不支持")
+    if document.metadata.compatibility != SETTINGS_EXPORT_COMPATIBILITY:
+        raise ValueError("配置文件兼容标识不支持")
+    return document
+
+
+def _normalize_runtime_import_config(document: SettingsExportDocument) -> dict[str, str]:
+    unknown_keys = set(document.runtime_config) - RUNTIME_CONFIG_KEYS
+    if unknown_keys:
+        raise ValueError(f"未知配置项: {', '.join(sorted(unknown_keys))}")
+    missing_keys = RUNTIME_CONFIG_KEYS - set(document.runtime_config)
+    if missing_keys:
+        raise ValueError(f"配置文件缺少配置项: {', '.join(sorted(missing_keys))}")
+    normalized_values = normalize_config_values(document.runtime_config)
+    _validate_runtime_settings(normalized_values)
+    return normalized_values
+
+
+def _dedupe_ordered(values: list[str]) -> list[str]:
+    result: list[str] = []
+    for value in values:
+        if value not in result:
+            result.append(value)
+    return result
+
+
+def _normalize_optional_text(value: str | None) -> str | None:
+    normalized = "" if value is None else str(value).strip()
+    return normalized or None
+
+
+def _normalize_import_profiles(document: SettingsExportDocument) -> list[dict[str, Any]]:
+    seen_profile_ids: set[str] = set()
+    profiles: list[dict[str, Any]] = []
+    for profile in document.provider_profiles:
+        if profile.id in seen_profile_ids:
+            raise ValueError("供应商档案不能重复")
+        seen_profile_ids.add(profile.id)
+        if profile.provider_type != PROVIDER_TYPE_OPENAI_COMPATIBLE:
+            raise ValueError("供应商类型不支持")
+        capabilities = _dedupe_ordered([str(capability).strip() for capability in profile.capabilities])
+        validate_provider_capabilities(capabilities)
+        unknown = set(capabilities) - PROVIDER_CAPABILITIES
+        if unknown:
+            raise ValueError(f"供应商能力不支持: {', '.join(sorted(unknown))}")
+        name = profile.name.strip()
+        if not name:
+            raise ValueError("供应商名称不能为空")
+        profiles.append(
+            {
+                "id": profile.id,
+                "name": name,
+                "provider_type": profile.provider_type,
+                "base_url": _normalize_optional_text(profile.base_url),
+                "api_key": _normalize_optional_text(profile.api_key),
+                "capabilities_json": capabilities,
+                "default_models_json": dict(profile.default_models),
+                "config_json": dict(profile.config),
+                "enabled": profile.enabled,
+            }
+        )
+    return profiles
+
+
+def _normalize_import_bindings(
+    document: SettingsExportDocument,
+    profiles: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    profiles_by_id = {profile["id"]: profile for profile in profiles}
+    seen_purposes: set[str] = set()
+    bindings: list[dict[str, Any]] = []
+    for binding in document.provider_bindings:
+        if binding.purpose in seen_purposes:
+            raise ValueError("供应商用途绑定不能重复")
+        seen_purposes.add(binding.purpose)
+        if binding.purpose not in PROVIDER_PURPOSES:
+            raise ValueError("用途必须是 text 或 image")
+        allowed_kinds = TEXT_PROVIDER_KINDS if binding.purpose == "text" else IMAGE_PROVIDER_KINDS
+        if binding.provider_kind not in allowed_kinds:
+            raise ValueError("供应商接口类型不支持当前用途")
+        normalized_config = normalize_provider_binding_runtime_config(
+            purpose=binding.purpose,
+            provider_kind=binding.provider_kind,
+            model_settings=binding.model_settings,
+            config=binding.config,
+        )
+        provider_profile_id = binding.provider_profile_id
+        if binding.provider_kind == "mock":
+            provider_profile_id = None
+        else:
+            if not provider_profile_id:
+                raise ValueError("真实供应商必须选择供应商档案")
+            profile = profiles_by_id.get(provider_profile_id)
+            if profile is None:
+                raise ValueError("供应商不存在")
+            if not profile["enabled"]:
+                raise ValueError("供应商已停用")
+            capability = capability_for_provider_kind(binding.provider_kind)
+            if capability not in set(profile["capabilities_json"]):
+                raise ValueError("供应商档案不支持当前接口能力")
+        bindings.append(
+            {
+                "purpose": binding.purpose,
+                "provider_kind": binding.provider_kind,
+                "provider_profile_id": provider_profile_id,
+                "model_settings_json": dict(binding.model_settings),
+                "config_json": normalized_config,
+            }
+        )
+    missing_purposes = PROVIDER_PURPOSES - seen_purposes
+    if missing_purposes:
+        raise ValueError(f"配置文件缺少供应商绑定: {', '.join(sorted(missing_purposes))}")
+    return bindings
+
+
+def _build_settings_import_bundle(payload: Any) -> _SettingsImportBundle:
+    document = _parse_settings_import_document(payload)
+    normalized_runtime_config = _normalize_runtime_import_config(document)
+    profiles = _normalize_import_profiles(document)
+    bindings = _normalize_import_bindings(document, profiles)
+    preview = SettingsImportPreviewResponse(
+        schema_version=document.metadata.schema_version,
+        runtime_config_count=len(normalized_runtime_config),
+        provider_profile_count=len(profiles),
+        provider_binding_count=len(bindings),
+        provider_profile_names=[profile["name"] for profile in profiles],
+        provider_binding_purposes=sorted(binding["purpose"] for binding in bindings),
+        includes_api_keys=any(bool(profile["api_key"]) for profile in profiles),
+        provider_profiles_with_api_key_count=sum(1 for profile in profiles if profile["api_key"]),
+    )
+    return _SettingsImportBundle(
+        normalized_runtime_config=normalized_runtime_config,
+        provider_profiles=profiles,
+        provider_bindings=bindings,
+        preview=preview,
+    )
+
+
+def _apply_settings_import_bundle(session: Session, bundle: _SettingsImportBundle) -> None:
+    with session.begin():
+        for key, value in bundle.normalized_runtime_config.items():
+            existing = session.get(AppSetting, key)
+            if existing is None:
+                session.add(AppSetting(key=key, value=value))
+            else:
+                existing.value = value
+
+        session.execute(delete(ProviderBinding))
+        session.execute(delete(ProviderProfile))
+        session.flush()
+
+        for profile in bundle.provider_profiles:
+            session.add(
+                ProviderProfile(
+                    id=profile["id"],
+                    name=profile["name"],
+                    provider_type=profile["provider_type"],
+                    base_url=profile["base_url"],
+                    api_key=profile["api_key"],
+                    capabilities_json=profile["capabilities_json"],
+                    default_models_json=profile["default_models_json"],
+                    config_json=profile["config_json"],
+                    enabled=profile["enabled"],
+                )
+            )
+        session.flush()
+        for binding in bundle.provider_bindings:
+            session.add(
+                ProviderBinding(
+                    purpose=binding["purpose"],
+                    provider_kind=binding["provider_kind"],
+                    provider_profile_id=binding["provider_profile_id"],
+                    model_settings_json=binding["model_settings_json"],
+                    config_json=binding["config_json"],
+                )
+            )
+    session.expire_all()
+
+
 @router.get("/lock-state", response_model=SettingsLockStateResponse)
 def get_settings_lock_state_endpoint(request: Request) -> SettingsLockStateResponse:
     configured = _settings_token_configured()
@@ -187,6 +457,50 @@ def get_config_endpoint(session: Session = Depends(get_session)) -> ConfigRespon
 def get_provider_config_endpoint(session: Session = Depends(get_session)) -> ProviderConfigResponse:
     ensure_provider_config_bootstrapped(session)
     return _serialize_provider_config(session)
+
+
+@router.get(
+    "/export",
+    response_model=SettingsExportDocument,
+    dependencies=[Depends(require_settings_unlocked)],
+)
+def export_settings_endpoint(session: Session = Depends(get_session)) -> SettingsExportDocument:
+    return _build_settings_export_document(session)
+
+
+@router.post(
+    "/import/preview",
+    response_model=SettingsImportPreviewResponse,
+    dependencies=[Depends(require_settings_unlocked)],
+)
+def preview_settings_import_endpoint(payload: Any = Body(...)) -> SettingsImportPreviewResponse:
+    try:
+        bundle = _build_settings_import_bundle(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return bundle.preview
+
+
+@router.post(
+    "/import",
+    response_model=SettingsImportCommitResponse,
+    dependencies=[Depends(require_settings_unlocked)],
+)
+def import_settings_endpoint(
+    payload: Any = Body(...),
+    session: Session = Depends(get_session),
+) -> SettingsImportCommitResponse:
+    try:
+        bundle = _build_settings_import_bundle(payload)
+        _apply_settings_import_bundle(session, bundle)
+    except ValueError as exc:
+        session.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return SettingsImportCommitResponse(
+        preview=bundle.preview,
+        config=_serialize_config(session),
+        provider_config=_serialize_provider_config(session),
+    )
 
 
 @router.post(

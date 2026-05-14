@@ -65,6 +65,18 @@ import {
   replaceSelectedNodeIdsFromBox,
   toggleSelectedNodeId,
 } from "./product-detail/selection";
+import {
+  getSelectedWorkflowShortcutNodeIds,
+  getWorkflowKeyboardShortcut,
+} from "./product-detail/shortcuts";
+import {
+  createRestoreEdgesStep,
+  createRestoreNodesStep,
+  getInternalWorkflowEdges,
+  workflowHistoryStepRequiresConfirmation,
+  workflowEdgeToRestorableEdge,
+} from "./product-detail/workflowHistory";
+import type { WorkflowHistoryStep } from "./product-detail/workflowHistory";
 import { connectionDescription, localizedWorkflowNodeTypeLabel } from "./product-detail/nodeDisplay";
 import type { NodeConfigDraft, SaveStatus } from "./product-detail/types";
 import {
@@ -98,6 +110,15 @@ type PendingDeleteAction =
   | { kind: "selectedNodes"; nodeIds: string[]; count: number }
   | { kind: "template"; templateId: string; title: string };
 
+type PendingHistoryAction = {
+  direction: "undo" | "redo";
+  step: WorkflowHistoryStep;
+};
+
+type WorkflowClipboard = {
+  nodeIds: string[];
+};
+
 type WorkflowCanvasMutationBridge = {
   acceptNodePositionMutation: (nodeId: string, mutationVersion: number) => boolean;
   clearOptimisticNodePosition: (nodeId: string) => void;
@@ -114,6 +135,18 @@ export function ProductDetailPage() {
   const draftVersionRef = useRef(0);
   const previousDraftNodeIdRef = useRef<string | null>(null);
   const skipNextCanvasBlankClickRef = useRef(false);
+  const workflowClipboardRef = useRef<WorkflowClipboard | null>(null);
+  const undoStackRef = useRef<WorkflowHistoryStep[]>([]);
+  const redoStackRef = useRef<WorkflowHistoryStep[]>([]);
+  const pendingMoveGroupsRef = useRef<
+    Record<
+      string,
+      {
+        expected: number;
+        moves: Array<{ nodeId: string; from: { x: number; y: number }; to: { x: number; y: number } }>;
+      }
+    >
+  >({});
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [templateSaveTitle, setTemplateSaveTitle] = useState("");
@@ -136,6 +169,8 @@ export function ProductDetailPage() {
   );
   const [pendingDeleteAction, setPendingDeleteAction] =
     useState<PendingDeleteAction | null>(null);
+  const [pendingHistoryAction, setPendingHistoryAction] = useState<PendingHistoryAction | null>(null);
+  const [historyActionBusy, setHistoryActionBusy] = useState(false);
   const [error, setError] = useState("");
 
   const productQuery = useQuery({
@@ -191,6 +226,14 @@ export function ProductDetailPage() {
     workflow?.nodes.find((node) => node.id === selectedNodeId) ??
     workflow?.nodes[0] ??
     null;
+
+  useEffect(() => {
+    workflowClipboardRef.current = null;
+    undoStackRef.current = [];
+    redoStackRef.current = [];
+    pendingMoveGroupsRef.current = {};
+    setPendingHistoryAction(null);
+  }, [productId, workflow?.id]);
 
   useEffect(() => {
     if (!workflow?.nodes.length) {
@@ -440,6 +483,217 @@ export function ProductDetailPage() {
     })();
   };
 
+  const getCurrentWorkflow = () =>
+    queryClient.getQueryData<ProductWorkflow>(["product-workflow", productId]) ?? workflow ?? null;
+
+  const setWorkflowCache = (nextWorkflow: ProductWorkflow) => {
+    queryClient.setQueryData(["product-workflow", productId], nextWorkflow);
+  };
+
+  const pushUndoStep = (step: WorkflowHistoryStep) => {
+    if (
+      (step.kind === "deleteNodes" && !step.nodeIds.length) ||
+      (step.kind === "restoreNodes" && !step.nodes.length) ||
+      (step.kind === "deleteEdges" && !step.edgeIds.length) ||
+      (step.kind === "restoreEdges" && !step.edges.length) ||
+      (step.kind === "moveNodes" && !step.moves.length)
+    ) {
+      return;
+    }
+    undoStackRef.current.push(step);
+    redoStackRef.current = [];
+  };
+
+  const selectCreatedNodes = (previousWorkflow: ProductWorkflow | null, nextWorkflow: ProductWorkflow) => {
+    const previousNodeIds = new Set(previousWorkflow?.nodes.map((node) => node.id) ?? []);
+    const createdNodes = nextWorkflow.nodes.filter((node) => !previousNodeIds.has(node.id));
+    if (!createdNodes.length) {
+      return;
+    }
+    setSelectedNodeId(createdNodes[0].id);
+    setSelectedNodeIds(createdNodes.map((node) => node.id));
+    setActiveSidebarTab("details");
+  };
+
+  const executeDeleteNodesStep = async (
+    step: Extract<WorkflowHistoryStep, { kind: "deleteNodes" }>,
+  ): Promise<WorkflowHistoryStep> => {
+    const currentWorkflow = getCurrentWorkflow();
+    const nodeIdSet = new Set(step.nodeIds);
+    const nodesToRestore = currentWorkflow?.nodes.filter((node) => nodeIdSet.has(node.id)) ?? [];
+    const edgesToRestore = getInternalWorkflowEdges(currentWorkflow?.edges ?? [], nodeIdSet);
+    let nextWorkflow = currentWorkflow;
+    for (const nodeId of step.nodeIds) {
+      if (!nextWorkflow?.nodes.some((node) => node.id === nodeId)) {
+        continue;
+      }
+      nextWorkflow = await api.deleteWorkflowNode(nodeId);
+      setWorkflowCache(nextWorkflow);
+    }
+    if (nextWorkflow) {
+      const nextPrimaryNodeId = nextWorkflow.nodes[0]?.id ?? null;
+      setSelectedNodeId(nextPrimaryNodeId);
+      setSelectedNodeIds(clearSelectedNodeGroup(nextPrimaryNodeId));
+    }
+    return createRestoreNodesStep(nodesToRestore, edgesToRestore);
+  };
+
+  const executeRestoreNodesStep = async (
+    step: Extract<WorkflowHistoryStep, { kind: "restoreNodes" }>,
+  ): Promise<WorkflowHistoryStep> => {
+    const oldToNewNodeIds = new Map<string, string>();
+    let nextWorkflow = getCurrentWorkflow();
+    const createdNodeIds: string[] = [];
+    for (const node of step.nodes) {
+      const previousNodeIds = new Set(nextWorkflow?.nodes.map((workflowNode) => workflowNode.id) ?? []);
+      nextWorkflow = await api.createWorkflowNode(productId, {
+        node_type: node.node_type,
+        title: node.title,
+        position_x: node.position_x,
+        position_y: node.position_y,
+        config_json: node.config_json,
+      });
+      setWorkflowCache(nextWorkflow);
+      const createdNode = nextWorkflow.nodes.find((workflowNode) => !previousNodeIds.has(workflowNode.id));
+      if (createdNode) {
+        oldToNewNodeIds.set(node.oldId, createdNode.id);
+        createdNodeIds.push(createdNode.id);
+      }
+    }
+    for (const edge of step.edges) {
+      const sourceNodeId = oldToNewNodeIds.get(edge.source_node_id);
+      const targetNodeId = oldToNewNodeIds.get(edge.target_node_id);
+      if (!sourceNodeId || !targetNodeId) {
+        continue;
+      }
+      nextWorkflow = await api.createWorkflowEdge(productId, {
+        source_node_id: sourceNodeId,
+        target_node_id: targetNodeId,
+        source_handle: edge.source_handle ?? undefined,
+        target_handle: edge.target_handle ?? undefined,
+      });
+      setWorkflowCache(nextWorkflow);
+    }
+    if (nextWorkflow) {
+      setSelectedNodeId(createdNodeIds[0] ?? null);
+      setSelectedNodeIds(createdNodeIds);
+      setActiveSidebarTab("details");
+    }
+    return { kind: "deleteNodes", nodeIds: createdNodeIds };
+  };
+
+  const executeDeleteEdgesStep = async (
+    step: Extract<WorkflowHistoryStep, { kind: "deleteEdges" }>,
+  ): Promise<WorkflowHistoryStep> => {
+    const currentWorkflow = getCurrentWorkflow();
+    const edgeIdSet = new Set(step.edgeIds);
+    const edgesToRestore = currentWorkflow?.edges.filter((edge) => edgeIdSet.has(edge.id)) ?? [];
+    let nextWorkflow = currentWorkflow;
+    for (const edgeId of step.edgeIds) {
+      if (!nextWorkflow?.edges.some((edge) => edge.id === edgeId)) {
+        continue;
+      }
+      nextWorkflow = await api.deleteWorkflowEdge(edgeId);
+      setWorkflowCache(nextWorkflow);
+    }
+    return createRestoreEdgesStep(edgesToRestore);
+  };
+
+  const executeRestoreEdgesStep = async (
+    step: Extract<WorkflowHistoryStep, { kind: "restoreEdges" }>,
+  ): Promise<WorkflowHistoryStep> => {
+    let nextWorkflow = getCurrentWorkflow();
+    const createdEdgeIds: string[] = [];
+    for (const edge of step.edges) {
+      const previousEdgeIds = new Set(nextWorkflow?.edges.map((workflowEdge) => workflowEdge.id) ?? []);
+      nextWorkflow = await api.createWorkflowEdge(productId, {
+        source_node_id: edge.source_node_id,
+        target_node_id: edge.target_node_id,
+        source_handle: edge.source_handle ?? undefined,
+        target_handle: edge.target_handle ?? undefined,
+      });
+      setWorkflowCache(nextWorkflow);
+      const createdEdge = nextWorkflow.edges.find((workflowEdge) => !previousEdgeIds.has(workflowEdge.id));
+      if (createdEdge) {
+        createdEdgeIds.push(createdEdge.id);
+      }
+    }
+    return { kind: "deleteEdges", edgeIds: createdEdgeIds };
+  };
+
+  const executeMoveNodesStep = async (
+    step: Extract<WorkflowHistoryStep, { kind: "moveNodes" }>,
+  ): Promise<WorkflowHistoryStep> => {
+    for (const move of step.moves) {
+      const nextWorkflow = await api.updateWorkflowNode(move.nodeId, {
+        position_x: move.to.x,
+        position_y: move.to.y,
+      });
+      setWorkflowCache(nextWorkflow);
+    }
+    return {
+      kind: "moveNodes",
+      moves: step.moves.map((move) => ({
+        nodeId: move.nodeId,
+        from: move.to,
+        to: move.from,
+      })),
+    };
+  };
+
+  const executeWorkflowHistoryStep = (step: WorkflowHistoryStep): Promise<WorkflowHistoryStep> => {
+    if (step.kind === "deleteNodes") {
+      return executeDeleteNodesStep(step);
+    }
+    if (step.kind === "restoreNodes") {
+      return executeRestoreNodesStep(step);
+    }
+    if (step.kind === "deleteEdges") {
+      return executeDeleteEdgesStep(step);
+    }
+    if (step.kind === "restoreEdges") {
+      return executeRestoreEdgesStep(step);
+    }
+    return executeMoveNodesStep(step);
+  };
+
+  const executeHistoryDirection = async (direction: "undo" | "redo", expectedStep?: WorkflowHistoryStep) => {
+    const sourceStack = direction === "undo" ? undoStackRef.current : redoStackRef.current;
+    const targetStack = direction === "undo" ? redoStackRef.current : undoStackRef.current;
+    const step = sourceStack[sourceStack.length - 1] ?? null;
+    if (!step || (expectedStep && step !== expectedStep)) {
+      setPendingHistoryAction(null);
+      return;
+    }
+    sourceStack.pop();
+    setHistoryActionBusy(true);
+    try {
+      const counterpart = await executeWorkflowHistoryStep(step);
+      targetStack.push(counterpart);
+      setPendingHistoryAction(null);
+      setError("");
+    } catch (mutationError) {
+      sourceStack.push(step);
+      setPendingHistoryAction(null);
+      setError(mutationError instanceof ApiError ? mutationError.detail : t("detail.error.historyAction"));
+    } finally {
+      setHistoryActionBusy(false);
+    }
+  };
+
+  const requestHistoryDirection = (direction: "undo" | "redo") => {
+    const stack = direction === "undo" ? undoStackRef.current : redoStackRef.current;
+    const step = stack[stack.length - 1] ?? null;
+    if (!step) {
+      return;
+    }
+    if (workflowHistoryStepRequiresConfirmation(step)) {
+      setPendingHistoryAction({ direction, step });
+      return;
+    }
+    void executeHistoryDirection(direction, step);
+  };
+
   const runWorkflowMutation = useMutation({
     mutationFn: (startNodeId?: string) =>
       api.runProductWorkflow(
@@ -522,6 +776,9 @@ export function ProductDetailPage() {
         (a, b) =>
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
       )[0];
+      if (newest) {
+        pushUndoStep({ kind: "deleteNodes", nodeIds: [newest.id] });
+      }
       setSelectedNodeId(newest?.id ?? null);
       setSelectedNodeIds(newest ? [newest.id] : []);
       setActiveSidebarTab("details");
@@ -558,6 +815,7 @@ export function ProductDetailPage() {
         createdNodes.find((node) => node.node_type === "image_generation") ??
         createdNodes[0] ??
         null;
+      pushUndoStep({ kind: "deleteNodes", nodeIds: createdNodes.map((node) => node.id) });
       setSelectedNodeId(selectedCreatedNode?.id ?? null);
       setSelectedNodeIds(selectedCreatedNode ? [selectedCreatedNode.id] : []);
       setActiveSidebarTab("details");
@@ -567,6 +825,47 @@ export function ProductDetailPage() {
         mutationError instanceof ApiError
           ? mutationError.detail
           : t("detail.error.applyTemplate"),
+      );
+    },
+  });
+
+  const duplicateNodeGroupMutation = useMutation({
+    mutationFn: async ({ nodeIds, source }: { nodeIds: string[]; source: "paste" | "duplicate" }) => {
+      if (!nodeIds.length) {
+        throw new Error(t("detail.error.selectNodesToDuplicate"));
+      }
+      await flushSelectedDraft();
+      const previousWorkflow = getCurrentWorkflow();
+      const nextWorkflow = await api.duplicateWorkflowNodeGroup(productId, {
+        node_ids: nodeIds,
+        offset_x: 56,
+        offset_y: 56,
+      });
+      return { nextWorkflow, previousWorkflow, source };
+    },
+    onSuccess: ({ nextWorkflow, previousWorkflow, source }) => {
+      const previousNodeIds = new Set(previousWorkflow?.nodes.map((node) => node.id) ?? []);
+      const createdNodeIds = nextWorkflow.nodes
+        .filter((node) => !previousNodeIds.has(node.id))
+        .map((node) => node.id);
+      setError("");
+      setNotice(
+        source === "paste"
+          ? t("detail.notice.pastedNodes", { count: createdNodeIds.length })
+          : t("detail.notice.duplicatedNodes", { count: createdNodeIds.length }),
+      );
+      setWorkflowCache(nextWorkflow);
+      pushUndoStep({ kind: "deleteNodes", nodeIds: createdNodeIds });
+      selectCreatedNodes(previousWorkflow, nextWorkflow);
+    },
+    onError: (mutationError) => {
+      setNotice("");
+      setError(
+        mutationError instanceof ApiError
+          ? mutationError.detail
+          : mutationError instanceof Error
+            ? mutationError.message
+            : t("detail.error.duplicateNodes"),
       );
     },
   });
@@ -684,6 +983,8 @@ export function ProductDetailPage() {
       position_x: number;
       position_y: number;
       mutationVersion: number;
+      moveGroupId: string;
+      moveGroupSize: number;
       rollbackWorkflow?: ProductWorkflow;
     }) =>
       api.updateWorkflowNode(input.node.id, {
@@ -722,6 +1023,20 @@ export function ProductDetailPage() {
         },
       );
       workflowCanvasRef.current.clearOptimisticNodePosition(input.node.id);
+      const moveGroup = pendingMoveGroupsRef.current[input.moveGroupId] ?? {
+        expected: input.moveGroupSize,
+        moves: [],
+      };
+      moveGroup.moves.push({
+        nodeId: input.node.id,
+        from: { x: input.position_x, y: input.position_y },
+        to: { x: input.node.position_x, y: input.node.position_y },
+      });
+      pendingMoveGroupsRef.current[input.moveGroupId] = moveGroup;
+      if (moveGroup.moves.length >= moveGroup.expected) {
+        pushUndoStep({ kind: "moveNodes", moves: moveGroup.moves });
+        delete pendingMoveGroupsRef.current[input.moveGroupId];
+      }
     },
     onError: (mutationError, _input, context) => {
       if (!workflowCanvasRef.current?.acceptNodePositionMutation(_input.node.id, _input.mutationVersion)) {
@@ -734,6 +1049,7 @@ export function ProductDetailPage() {
         );
       }
       workflowCanvasRef.current.clearOptimisticNodePosition(_input.node.id);
+      delete pendingMoveGroupsRef.current[_input.moveGroupId];
       setError(
         mutationError instanceof ApiError
           ? mutationError.detail
@@ -745,6 +1061,7 @@ export function ProductDetailPage() {
   const createEdgeMutation = useMutation({
     mutationFn: async (input: { sourceNodeId: string; targetNodeId: string }) => {
       const currentWorkflow = queryClient.getQueryData<ProductWorkflow>(["product-workflow", productId]) ?? workflow;
+      const previousEdgeIds = new Set(currentWorkflow?.edges.map((edge) => edge.id) ?? []);
       const source = currentWorkflow?.nodes.find((node) => node.id === input.sourceNodeId);
       const target = currentWorkflow?.nodes.find((node) => node.id === input.targetNodeId);
       if (source?.node_type === "reference_image" && target?.node_type === "reference_image") {
@@ -756,14 +1073,18 @@ export function ProductDetailPage() {
         source_handle: "output",
         target_handle: "input",
       });
-      return { nextWorkflow, sourceNodeId: input.sourceNodeId, targetNodeId: input.targetNodeId };
+      return { nextWorkflow, sourceNodeId: input.sourceNodeId, targetNodeId: input.targetNodeId, previousEdgeIds };
     },
-    onSuccess: ({ nextWorkflow, sourceNodeId, targetNodeId }) => {
+    onSuccess: ({ nextWorkflow, sourceNodeId, targetNodeId, previousEdgeIds }) => {
       const source = nextWorkflow.nodes.find((node) => node.id === sourceNodeId);
       const target = nextWorkflow.nodes.find((node) => node.id === targetNodeId);
+      const createdEdgeIds = nextWorkflow.edges
+        .filter((edge) => !previousEdgeIds.has(edge.id))
+        .map((edge) => edge.id);
       setError("");
       setNotice(source && target ? connectionDescription(source, target, t) : "");
       queryClient.setQueryData(["product-workflow", productId], nextWorkflow);
+      pushUndoStep({ kind: "deleteEdges", edgeIds: createdEdgeIds });
       setSelectedNodeIds(clearSelectedNodeGroup(selectedNodeId));
     },
     onError: (mutationError) => {
@@ -779,11 +1100,20 @@ export function ProductDetailPage() {
   });
 
   const deleteEdgeMutation = useMutation({
-    mutationFn: (edgeId: string) => api.deleteWorkflowEdge(edgeId),
-    onSuccess: (nextWorkflow) => {
+    mutationFn: async (edgeId: string) => {
+      const currentWorkflow = getCurrentWorkflow();
+      const edge = currentWorkflow?.edges.find((workflowEdge) => workflowEdge.id === edgeId);
+      const restoreStep: WorkflowHistoryStep = edge
+        ? { kind: "restoreEdges", edges: [workflowEdgeToRestorableEdge(edge)] }
+        : { kind: "restoreEdges", edges: [] };
+      const nextWorkflow = await api.deleteWorkflowEdge(edgeId);
+      return { nextWorkflow, restoreStep };
+    },
+    onSuccess: ({ nextWorkflow, restoreStep }) => {
       setError("");
       setNotice("");
       queryClient.setQueryData(["product-workflow", productId], nextWorkflow);
+      pushUndoStep(restoreStep);
       setSelectedNodeIds(clearSelectedNodeGroup(selectedNodeId));
     },
     onError: (mutationError) => {
@@ -797,11 +1127,22 @@ export function ProductDetailPage() {
   });
 
   const deleteNodeMutation = useMutation({
-    mutationFn: (nodeId: string) => api.deleteWorkflowNode(nodeId),
-    onSuccess: (nextWorkflow, nodeId) => {
+    mutationFn: async (nodeId: string) => {
+      const currentWorkflow = getCurrentWorkflow();
+      const node = currentWorkflow?.nodes.find((workflowNode) => workflowNode.id === nodeId);
+      const nodeIds = new Set(node ? [node.id] : []);
+      const restoreStep = createRestoreNodesStep(
+        node ? [node] : [],
+        getInternalWorkflowEdges(currentWorkflow?.edges ?? [], nodeIds),
+      );
+      const nextWorkflow = await api.deleteWorkflowNode(nodeId);
+      return { nextWorkflow, nodeId, restoreStep };
+    },
+    onSuccess: ({ nextWorkflow, nodeId, restoreStep }) => {
       setError("");
       setPendingDeleteAction(null);
       queryClient.setQueryData(["product-workflow", productId], nextWorkflow);
+      pushUndoStep(restoreStep);
       const fallbackPrimaryNodeId = selectedNodeId === nodeId ? nextWorkflow.nodes[0]?.id ?? null : selectedNodeId;
       const nextSelection = deleteNodeFromSelection(selectedNodeIds, nodeId, fallbackPrimaryNodeId);
       setSelectedNodeId(nextSelection.primaryNodeId);
@@ -826,6 +1167,12 @@ export function ProductDetailPage() {
       if (nodeIds.length < 2) {
         throw new Error(t("detail.error.selectNodesToDelete"));
       }
+      const currentWorkflow = getCurrentWorkflow();
+      const nodeIdSet = new Set(nodeIds);
+      const restoreStep = createRestoreNodesStep(
+        currentWorkflow?.nodes.filter((node) => nodeIdSet.has(node.id)) ?? [],
+        getInternalWorkflowEdges(currentWorkflow?.edges ?? [], nodeIdSet),
+      );
       let nextWorkflow: ProductWorkflow | null = null;
       for (const nodeId of nodeIds) {
         nextWorkflow = await api.deleteWorkflowNode(nodeId);
@@ -833,12 +1180,13 @@ export function ProductDetailPage() {
       if (!nextWorkflow) {
         throw new Error(t("detail.error.deleteNode"));
       }
-      return nextWorkflow;
+      return { nextWorkflow, restoreStep };
     },
-    onSuccess: (nextWorkflow) => {
+    onSuccess: ({ nextWorkflow, restoreStep }) => {
       setError("");
       setPendingDeleteAction(null);
       queryClient.setQueryData(["product-workflow", productId], nextWorkflow);
+      pushUndoStep(restoreStep);
       const nextPrimaryNodeId = nextWorkflow.nodes[0]?.id ?? null;
       setSelectedNodeId(nextPrimaryNodeId);
       setSelectedNodeIds(clearSelectedNodeGroup(nextPrimaryNodeId));
@@ -1001,6 +1349,8 @@ export function ProductDetailPage() {
   const layoutMutationBusy =
     createNodeMutation.isPending ||
     applyTemplateGroupMutation.isPending ||
+    duplicateNodeGroupMutation.isPending ||
+    historyActionBusy ||
     updateNodeConfigMutation.isPending ||
     createEdgeMutation.isPending ||
     deleteEdgeMutation.isPending ||
@@ -1036,6 +1386,18 @@ export function ProductDetailPage() {
             : pendingDeleteAction.kind === "selectedNodes"
               ? deleteSelectedNodesMutation.isPending
               : archiveUserTemplateGroupMutation.isPending,
+      }
+    : null;
+  const pendingHistoryDeleteCount =
+    pendingHistoryAction?.step.kind === "deleteNodes"
+      ? pendingHistoryAction.step.nodeIds.length
+      : pendingHistoryAction?.step.kind === "deleteEdges"
+        ? pendingHistoryAction.step.edgeIds.length
+        : 0;
+  const pendingHistoryDialog = pendingHistoryAction
+    ? {
+        title: pendingHistoryAction.direction === "undo" ? t("detail.confirm.undoTitle") : t("detail.confirm.redoTitle"),
+        description: t("detail.confirm.historyDeletes", { count: pendingHistoryDeleteCount }),
       }
     : null;
   const commitNodePosition = (input: NodePositionCommitInput) => {
@@ -1110,6 +1472,89 @@ export function ProductDetailPage() {
     moveConnectionDrag,
     endConnectionDrag,
   } = workflowCanvas;
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const shortcut = getWorkflowKeyboardShortcut(event);
+      if (!shortcut) {
+        return;
+      }
+      if (!workflow) {
+        return;
+      }
+      if (previewImage || pendingDeleteAction || pendingHistoryAction) {
+        return;
+      }
+      event.preventDefault();
+      const shortcutNodeIds = getSelectedWorkflowShortcutNodeIds(selectedNodeIds, selectedNodeId);
+
+      if (shortcut === "copy") {
+        if (!shortcutNodeIds.length) {
+          return;
+        }
+        workflowClipboardRef.current = { nodeIds: shortcutNodeIds };
+        setNotice(t("detail.notice.copiedNodes", { count: shortcutNodeIds.length }));
+        setError("");
+        return;
+      }
+
+      if (structureBusy) {
+        setError(t("detail.error.shortcutBusy"));
+        return;
+      }
+
+      if (shortcut === "paste") {
+        const clipboard = workflowClipboardRef.current;
+        if (!clipboard?.nodeIds.length) {
+          return;
+        }
+        duplicateNodeGroupMutation.mutate({ nodeIds: clipboard.nodeIds, source: "paste" });
+        return;
+      }
+
+      if (shortcut === "duplicate") {
+        if (!shortcutNodeIds.length) {
+          return;
+        }
+        duplicateNodeGroupMutation.mutate({ nodeIds: shortcutNodeIds, source: "duplicate" });
+        return;
+      }
+
+      if (shortcut === "delete") {
+        if (!shortcutNodeIds.length) {
+          return;
+        }
+        if (shortcutNodeIds.length === 1) {
+          const node = workflow.nodes.find((workflowNode) => workflowNode.id === shortcutNodeIds[0]);
+          if (node) {
+            setPendingDeleteAction({ kind: "node", node });
+          }
+          return;
+        }
+        setPendingDeleteAction({
+          kind: "selectedNodes",
+          nodeIds: shortcutNodeIds,
+          count: shortcutNodeIds.length,
+        });
+        return;
+      }
+
+      requestHistoryDirection(shortcut);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [
+    duplicateNodeGroupMutation,
+    pendingDeleteAction,
+    pendingHistoryAction,
+    previewImage,
+    requestHistoryDirection,
+    selectedNodeId,
+    selectedNodeIds,
+    structureBusy,
+    t,
+    workflow,
+  ]);
 
   if (productQuery.isLoading) {
     return (
@@ -1776,6 +2221,20 @@ export function ProductDetailPage() {
             return;
           }
           archiveUserTemplateGroupMutation.mutate(pendingDeleteAction.templateId);
+        }}
+      />
+      <ConfirmDialog
+        open={Boolean(pendingHistoryDialog)}
+        title={pendingHistoryDialog?.title ?? ""}
+        description={pendingHistoryDialog?.description ?? ""}
+        confirmLabel={t("detail.confirm.continue")}
+        cancelLabel={t("common.cancel")}
+        busy={historyActionBusy}
+        onClose={() => setPendingHistoryAction(null)}
+        onConfirm={() => {
+          if (pendingHistoryAction) {
+            void executeHistoryDirection(pendingHistoryAction.direction, pendingHistoryAction.step);
+          }
         }}
       />
     </div>

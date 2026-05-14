@@ -13,6 +13,7 @@ from productflow_backend.application.product_workflows import (
     create_workflow_node,
     delete_workflow_edge,
     delete_workflow_node,
+    duplicate_workflow_node_group,
     get_or_create_product_workflow,
     get_product_workflow_status,
     list_canvas_templates,
@@ -32,6 +33,7 @@ from productflow_backend.presentation.schemas.product_workflows import (
     CreateUserTemplateGroupRequest,
     CreateWorkflowEdgeRequest,
     CreateWorkflowNodeRequest,
+    DuplicateWorkflowNodeGroupRequest,
     ProductWorkflowResponse,
     ProductWorkflowStatusResponse,
     RunWorkflowRequest,
@@ -147,6 +149,28 @@ def apply_workflow_template_group_endpoint(
         template_key=payload.template_key,
         position_x=payload.position_x,
         position_y=payload.position_y,
+    )
+    return serialize_product_workflow(workflow)
+
+
+@router.post(
+    "/products/{product_id}/workflow/node-groups/duplicate",
+    response_model=ProductWorkflowResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def duplicate_workflow_node_group_endpoint(
+    product_id: str,
+    payload: DuplicateWorkflowNodeGroupRequest,
+    session: Session = Depends(get_session),
+) -> ProductWorkflowResponse:
+    workflow = duplicate_workflow_node_group(
+        session,
+        product_id=product_id,
+        node_ids=payload.node_ids,
+        position_x=payload.position_x,
+        position_y=payload.position_y,
+        offset_x=payload.offset_x,
+        offset_y=payload.offset_y,
     )
     return serialize_product_workflow(workflow)
 

@@ -11,9 +11,20 @@ import {
   providerProfileUpdatePayload,
   providerUsageFromBindings,
   providerUsageLabelKeys,
+  settingsExportFilename,
+  settingsImportSummaryCounts,
+  settingsSectionIds,
+  shouldShowSettingsMigrationPanel,
 } from "./SettingsPage";
 import { translate } from "../lib/i18n";
-import type { ConfigItem, ConfigResponse, ProviderBinding, ProviderCapability, ProviderProfile } from "../lib/types";
+import type {
+  ConfigItem,
+  ConfigResponse,
+  ProviderBinding,
+  ProviderCapability,
+  ProviderProfile,
+  SettingsImportPreviewResponse,
+} from "../lib/types";
 
 function configItem(overrides: Partial<ConfigItem> & Pick<ConfigItem, "key" | "value">): ConfigItem {
   return {
@@ -221,5 +232,42 @@ describe("SettingsPage provider profile helpers", () => {
       'Delete "OpenRouter"?',
     );
     expect(translate("en-US", "settings.provider.deleteConfirmLabel")).toBe("Delete");
+  });
+});
+
+describe("SettingsPage import/export helpers", () => {
+  it("keeps import and export controls on a dedicated settings section", () => {
+    const sectionIds = settingsSectionIds();
+
+    expect(sectionIds).toContain("migration");
+    expect(shouldShowSettingsMigrationPanel("migration")).toBe(true);
+    for (const sectionId of sectionIds.filter((sectionId) => sectionId !== "migration")) {
+      expect(shouldShowSettingsMigrationPanel(sectionId)).toBe(false);
+    }
+  });
+
+  it("builds a stable JSON export filename from the export timestamp", () => {
+    expect(settingsExportFilename("2026-05-14T01:02:03Z")).toBe("productflow-settings-2026-05-14-010203.json");
+    expect(settingsExportFilename(null)).toBe("productflow-settings.json");
+  });
+
+  it("normalizes import preview summary counts for confirmation copy", () => {
+    const preview: SettingsImportPreviewResponse = {
+      schema_version: 1,
+      runtime_config_count: 12,
+      provider_profile_count: 2,
+      provider_binding_count: 2,
+      provider_profile_names: ["主供应商", "备用供应商"],
+      provider_binding_purposes: ["image", "text"],
+      includes_api_keys: true,
+      provider_profiles_with_api_key_count: 1,
+    };
+
+    expect(settingsImportSummaryCounts(preview)).toEqual({
+      runtimeConfigCount: 12,
+      providerProfileCount: 2,
+      providerBindingCount: 2,
+      providerProfilesWithApiKeyCount: 1,
+    });
   });
 });

@@ -666,3 +666,64 @@ export interface ProviderConfigResponse {
   profiles: ProviderProfile[];
   bindings: ProviderBinding[];
 }
+
+export interface SettingsExportMetadata {
+  schema_version: number;
+  exported_at: string;
+  app: string;
+  compatibility: string;
+  app_version: string;
+}
+
+export interface SettingsExportProviderProfile {
+  id: string;
+  name: string;
+  provider_type: ProviderType;
+  base_url: string | null;
+  api_key: string | null;
+  capabilities: ProviderCapability[];
+  default_models: Record<string, unknown>;
+  config: Record<string, unknown>;
+  enabled: boolean;
+}
+
+export interface SettingsExportProviderBinding {
+  purpose: ProviderPurpose;
+  provider_kind: string;
+  provider_profile_name?: string | null;
+  provider_profile_id?: string | null;
+  model_settings: Record<string, unknown>;
+  config: Record<string, unknown>;
+}
+
+export interface SettingsExportPayload {
+  metadata: SettingsExportMetadata;
+  runtime_config: Record<string, string | number | boolean | string[] | null>;
+  provider_profiles: SettingsExportProviderProfile[];
+  provider_bindings: SettingsExportProviderBinding[];
+}
+
+export interface SettingsImportPreviewResponse {
+  schema_version: number;
+  runtime_config_count: number;
+  provider_profile_count: number;
+  provider_binding_count: number;
+  provider_profile_names: string[];
+  provider_binding_purposes: ProviderPurpose[];
+  includes_api_keys: boolean;
+  provider_profiles_with_api_key_count: number;
+}
+
+export interface SettingsImportCommitResponse {
+  preview: SettingsImportPreviewResponse;
+  config: ConfigResponse;
+  provider_config: ProviderConfigResponse;
+}
+
+export interface DuplicateWorkflowNodeGroupInput {
+  node_ids: string[];
+  offset_x?: number;
+  offset_y?: number;
+  position_x?: number;
+  position_y?: number;
+}

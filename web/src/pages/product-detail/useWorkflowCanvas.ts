@@ -44,6 +44,8 @@ export interface NodePositionCommitInput {
   position_x: number;
   position_y: number;
   mutationVersion: number;
+  moveGroupId: string;
+  moveGroupSize: number;
 }
 
 interface UseWorkflowCanvasOptions {
@@ -136,6 +138,7 @@ export function useWorkflowCanvas({
   const edgePathRefs = useRef<Record<string, SVGPathElement | null>>({});
   const edgeDeleteButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const nodePositionMutationVersionsRef = useRef<Record<string, number>>({});
+  const nodeDragCommitGroupCounterRef = useRef(0);
   const previousBodyUserSelectRef = useRef<string | null>(null);
   const [nodeDrag, setNodeDrag] = useState<NodeDragState | null>(null);
   const [optimisticNodePositions, setOptimisticNodePositions] = useState<Record<string, CanvasPoint>>({});
@@ -579,6 +582,8 @@ export function useWorkflowCanvas({
         ) ?? [];
     if (movedEntries.length) {
       const nextOptimisticPositions: Record<string, CanvasPoint> = {};
+      nodeDragCommitGroupCounterRef.current += 1;
+      const moveGroupId = String(nodeDragCommitGroupCounterRef.current);
       for (const { node: movedNode, position } of movedEntries) {
         const mutationVersion = (nodePositionMutationVersionsRef.current[movedNode.id] ?? 0) + 1;
         nodePositionMutationVersionsRef.current[movedNode.id] = mutationVersion;
@@ -589,6 +594,8 @@ export function useWorkflowCanvas({
           position_x: position.x,
           position_y: position.y,
           mutationVersion,
+          moveGroupId,
+          moveGroupSize: movedEntries.length,
         });
       }
       for (const { node: movedNode } of movedEntries) {

@@ -306,6 +306,8 @@ Do not duplicate these checks in multiple pages/routes.
 #### 3. Contracts
 
 - Store and pass image size as a provider-neutral lowercase `WIDTHxHEIGHT` string, for example `1024x1024` or `3840x2160`.
+- Each side is calibrated to the nearest provider-safe 16-pixel multiple before provider dispatch, for example `1500x800`
+  becomes `1504x800`.
 - Preset buttons are built-in ratio/tier shortcuts filtered by the runtime max single-edge setting; they are not a backend
   allowlist and are not loaded as arbitrary database-configured options.
 - `normalize_image_generation_size(...)` must use `get_runtime_settings().image_generation_max_dimension` unless a focused
@@ -319,6 +321,7 @@ Do not duplicate these checks in multiple pages/routes.
 - Bad syntax such as `1024`, `1024*1024`, or missing dimensions -> request/config validation error.
 - Non-positive dimensions such as `0x1024` or `1024x-1` -> request/config validation error.
 - Dimensions above the project safety bounds -> normalize to a safe calibrated `WIDTHxHEIGHT` before provider dispatch.
+- Dimensions that are not divisible by 16 -> normalize to the nearest safe 16-pixel multiple before provider dispatch.
 - Uppercase separators/digits such as `3840X2160` -> normalize to lowercase `3840x2160`.
 - `image_generation_max_dimension < 512` or `> 8192` -> settings validation error.
 - Invalid runtime default image dimensions -> settings validation error instead of silently publishing broken provider defaults.

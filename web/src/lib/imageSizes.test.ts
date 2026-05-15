@@ -30,6 +30,13 @@ describe("image size helpers", () => {
   it("normalizes and parses custom size strings", () => {
     expect(normalizeImageSizeValue("3840X2160")).toBe("3840x2160");
     expect(parseImageSizeValue("1280x720")).toEqual({ width: 1280, height: 720 });
+    expect(resolveImageSize(1500, 800)).toEqual({
+      width: 1504,
+      height: 800,
+      value: "1504x800",
+      calibrated: true,
+    });
+    expect(normalizeImageSizeValue("1500x800")).toBe("1504x800");
     expect(labelForImageSize("1280x720")).toBe("自定义 · 1280×720");
     expect(labelForImageSize("1280x720", "en-US")).toBe("Custom · 1280×720");
     expect(normalizeImageSizeValue("0x720")).toBeNull();
@@ -77,8 +84,8 @@ describe("image size helpers", () => {
     ]);
     expect(resolveImageSize(3072, 2048, 2048)).toEqual({
       width: 2048,
-      height: 1365,
-      value: "2048x1365",
+      height: 1360,
+      value: "2048x1360",
       calibrated: true,
     });
     expect(normalizeImageSizeValue("3840X2160", 2048)).toBe("2048x1152");

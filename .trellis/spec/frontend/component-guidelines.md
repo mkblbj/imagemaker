@@ -195,6 +195,8 @@ preview-sized assets, explicit download actions should use download URLs, and ro
 - Runtime max dimension comes from `api.getRuntimeConfig()` and is passed into `buildImageSizeOptions(maxDimension)` and
   `ImageSizePicker({ maxDimension })`.
 - Page/API boundary values remain normalized `WIDTHxHEIGHT` strings, for example `1024x1024` or `3840x2160`.
+- Custom dimensions are calibrated to the nearest provider-safe 16-pixel multiple before being emitted, for example
+  `1500x800` becomes `1504x800`.
 
 ### 3. Contracts
 
@@ -218,6 +220,7 @@ preview-sized assets, explicit download actions should use download URLs, and ro
 - Invalid local text such as missing width/height -> keep the custom inputs visible and avoid emitting a malformed size.
 - Existing value not found in presets -> show it as custom dimensions when parseable.
 - Custom inputs with uppercase separators or oversized values -> normalize/calibrate in the shared helper before emitting.
+- Custom inputs with either side not divisible by 16 -> normalize/calibrate in the shared helper before emitting.
 - Backend rejection still remains authoritative; frontend validation only improves UX.
 
 ### 5. Good/Base/Bad Cases

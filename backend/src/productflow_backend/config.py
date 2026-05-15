@@ -45,8 +45,8 @@ IMAGE_TOOL_FIELD_KEYS: tuple[str, ...] = (
     "action",
     "input_fidelity",
     "partial_images",
-    "n",
 )
+IMAGE_TOOL_LEGACY_FIELD_KEYS: tuple[str, ...] = ("n",)
 DEFAULT_IMAGE_TOOL_ALLOWED_FIELDS: tuple[str, ...] = tuple(key for key in IMAGE_TOOL_FIELD_KEYS if key != "background")
 DEFAULT_IMAGE_TOOL_ALLOWED_FIELDS_TEXT = ",".join(DEFAULT_IMAGE_TOOL_ALLOWED_FIELDS)
 BACKEND_DIR = Path(__file__).resolve().parents[2]
@@ -275,8 +275,8 @@ CONFIG_DEFINITIONS: tuple[ConfigDefinition, ...] = (
         input_type="multi_select",
         options=tuple(ConfigOption(key, key) for key in IMAGE_TOOL_FIELD_KEYS),
         description=(
-            "控制前端可展示、后端可持久化并发送给 image_generation tool 的高级字段；"
-            "不影响顶层 Responses background。"
+            "控制前端可展示、后端可持久化并发送给 Responses image_generation tool 的高级字段；"
+            "Images API n 由候选数量或下游承载节点数自动计算，不作为可选字段展示。"
         ),
     ),
     ConfigDefinition(
@@ -375,16 +375,6 @@ CONFIG_DEFINITIONS: tuple[ConfigDefinition, ...] = (
         description="0-3；留空不发送。",
         minimum=0,
         maximum=3,
-        optional=True,
-    ),
-    ConfigDefinition(
-        key="image_tool_n",
-        label="Provider n",
-        category="图片工具参数",
-        input_type="number",
-        description="高级字段；不改变文/图生图候选数量语义。",
-        minimum=1,
-        maximum=10,
         optional=True,
     ),
     ConfigDefinition(
@@ -625,7 +615,10 @@ def normalize_image_generation_size(
         resolved_width = max(1, int(resolved_width * pixel_scale))
         resolved_height = max(1, int(resolved_height * pixel_scale))
     resolved_width = _nearest_image_generation_dimension_multiple(resolved_width, max_dimension=effective_max_dimension)
-    resolved_height = _nearest_image_generation_dimension_multiple(resolved_height, max_dimension=effective_max_dimension)
+    resolved_height = _nearest_image_generation_dimension_multiple(
+        resolved_height,
+        max_dimension=effective_max_dimension,
+    )
     return f"{resolved_width}x{resolved_height}"
 
 
@@ -640,7 +633,7 @@ def parse_image_tool_allowed_fields(value: Any) -> tuple[str, ...]:
         parts = [str(value).strip()] if str(value).strip() else []
 
     selected = set(parts)
-    unknown = selected - set(IMAGE_TOOL_FIELD_KEYS)
+    unknown = selected - set(IMAGE_TOOL_FIELD_KEYS) - set(IMAGE_TOOL_LEGACY_FIELD_KEYS)
     if unknown:
         raise ValueError(f"可用 Tool 字段包含不支持的字段: {', '.join(sorted(unknown))}")
     return tuple(key for key in IMAGE_TOOL_FIELD_KEYS if key in selected)

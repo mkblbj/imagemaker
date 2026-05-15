@@ -140,15 +140,6 @@ export function ImageToolControls({
             onChange={(next) => update({ partial_images: parseOptionalNumber(next) })}
           />
         ) : null}
-        {allowed.has("n") ? (
-          <CompactInput
-            label="n"
-            value={value.n ?? ""}
-            inputMode="numeric"
-            placeholder={t("imageTool.default")}
-            onChange={(next) => update({ n: parseOptionalNumber(next) })}
-          />
-        ) : null}
       </div>
     </div>
   );

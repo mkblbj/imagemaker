@@ -158,7 +158,7 @@ class GenerateImageSessionRoundRequest(BaseModel):
     size: str = Field(default="1024x1024")
     base_asset_id: str | None = None
     selected_reference_asset_ids: list[str] = Field(default_factory=list, max_length=6)
-    generation_count: int = Field(default=1, ge=1, le=4)
+    generation_count: int = Field(default=1, ge=1, le=10)
     tool_options: ImageToolOptionsRequest | None = None
 
     @field_validator("size")

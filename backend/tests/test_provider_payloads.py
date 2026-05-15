@@ -102,8 +102,8 @@ class DummyImagesAPIItem:
 
 
 class DummyImagesAPIResponse:
-    def __init__(self, b64_json: str | None = None) -> None:
-        self.data = [DummyImagesAPIItem(b64_json)]
+    def __init__(self, b64_json: str | None = None, *, b64_jsons: list[str | None] | None = None) -> None:
+        self.data = [DummyImagesAPIItem(item) for item in (b64_jsons if b64_jsons is not None else [b64_json])]
 
 
 def test_prompt_settings_reach_provider_prompt_builders(configured_env: Path, monkeypatch) -> None:
@@ -1151,7 +1151,6 @@ def test_openai_responses_image_tool_optional_fields_are_omitted_until_configure
             "action": "generate",
             "input_fidelity": "high",
             "partial_images": 2,
-            "n": 3,
         }
     ]
     assert "tool_choice" not in calls[-1]
@@ -1450,7 +1449,7 @@ def test_openai_responses_image_client_retries_without_optional_fields_and_recor
 
     assert len(calls) == 2
     assert calls[0]["tools"] == [
-        {"type": "image_generation", "size": "1024x1024", "quality": "high", "output_format": "webp", "n": 2}
+        {"type": "image_generation", "size": "1024x1024", "quality": "high", "output_format": "webp"}
     ]
     assert calls[1]["tools"] == [{"type": "image_generation", "size": "1024x1024"}]
     assert result.provider_request_json["_productflow"]["fallback_used"] is True
@@ -2000,6 +1999,49 @@ def test_openai_images_poster_provider_uses_existing_prompt_contract_and_referen
     assert "- 参考图：reference.png（角色：参考图）" in prompt
     assert "保留商品主体" in prompt
     assert "不要把字段名" in prompt
+
+
+def test_openai_images_poster_provider_batches_count_as_images_api_n(
+    configured_env: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("IMAGE_PROVIDER_KIND", "openai_images")
+    monkeypatch.setenv("IMAGE_API_KEY", "demo-api-key")
+    monkeypatch.setenv("IMAGE_GENERATE_MODEL", "gpt-image-1")
+    get_settings.cache_clear()
+
+    calls: list[dict] = []
+    encoded_result = _make_demo_image_data_url().split(",", maxsplit=1)[1]
+
+    class DummyImages:
+        def generate(self, **kwargs):
+            calls.append(kwargs)
+            return DummyImagesAPIResponse(b64_jsons=[encoded_result, encoded_result, encoded_result])
+
+    class DummyOpenAI:
+        def __init__(self, **kwargs) -> None:
+            self.images = DummyImages()
+
+    monkeypatch.setattr("productflow_backend.infrastructure.image.images_provider.OpenAI", DummyOpenAI)
+
+    generated_images = OpenAIImagesImageProvider().generate_poster_images(
+        poster=PosterGenerationInput(
+            product_name="批量商品",
+            instruction="生成候选",
+            image_size="1024x1024",
+            tool_options={"quality": "high", "n": 1},
+        ),
+        kind=PosterKind.MAIN_IMAGE,
+        count=3,
+    )
+
+    assert len(calls) == 1
+    assert calls[0]["n"] == 3
+    assert calls[0]["quality"] == "high"
+    assert len(generated_images) == 3
+    assert [generated_image.variant_label for generated_image, _ in generated_images] == ["v1", "v2", "v3"]
+    assert [model_name for _, model_name in generated_images] == ["gpt-image-1", "gpt-image-1", "gpt-image-1"]
+
 
 def test_generated_poster_mode_uses_image_provider(
     db_session,

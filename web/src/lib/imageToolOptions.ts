@@ -10,7 +10,6 @@ export const IMAGE_TOOL_FIELD_KEYS: readonly ImageToolOptionKey[] = [
   "action",
   "input_fidelity",
   "partial_images",
-  "n",
 ];
 
 export const DEFAULT_IMAGE_TOOL_ALLOWED_FIELDS = IMAGE_TOOL_FIELD_KEYS.filter((key) => key !== "background");
@@ -50,7 +49,6 @@ export function compactImageToolOptions(
     action: options.action || undefined,
     input_fidelity: options.input_fidelity || undefined,
     partial_images: clampOptionalInteger(options.partial_images, 0, 3),
-    n: clampOptionalInteger(options.n, 1, 10),
   };
   const entries = Object.entries(compacted).filter(
     ([key, value]) => allowed.has(key as ImageToolOptionKey) && value !== undefined,

@@ -157,11 +157,13 @@ def execute_workflow_image_generation(
     provider_results: list[dict[str, object]] = []
     settings = get_runtime_settings()
     kind = poster_kind_from_config(node.config_json)
-    image_providers = (
-        [dependencies.image_provider() for _ in downstream_nodes]
-        if settings.poster_generation_mode == "generated"
-        else None
-    )
+    image_providers: list[ImageProvider] | None = None
+    if settings.poster_generation_mode == "generated":
+        first_provider = dependencies.image_provider()
+        if callable(getattr(first_provider, "generate_poster_images", None)):
+            image_providers = [first_provider]
+        else:
+            image_providers = [first_provider, *[dependencies.image_provider() for _ in downstream_nodes[1:]]]
     generated_images = generate_workflow_images_concurrently(
         render_input=render_input,
         kind=kind,
@@ -266,6 +268,79 @@ def generate_workflow_images_concurrently(
     dependencies = default_workflow_execution_dependencies()
     renderer_factory = renderer_factory or dependencies.poster_renderer
 
+    def generated_workflow_image_from_payload(
+        *,
+        target_index: int,
+        image_provider: ImageProvider,
+        generated_image,
+        image_model: str,
+    ) -> GeneratedWorkflowImage:
+        return GeneratedWorkflowImage(
+            target_index=target_index,
+            content=generated_image.bytes_data,
+            width=generated_image.width,
+            height=generated_image.height,
+            template_name=f"workflow:{image_provider.provider_name}:{generated_image.variant_label}:{image_model}",
+            mime_type=generated_image.mime_type,
+            provider_name=image_provider.provider_name,
+            model_name=image_model,
+            provider_response_id=generated_image.provider_response_id,
+            provider_response_status=generated_image.provider_response_status,
+            provider_output_json=generated_image.provider_output_json,
+        )
+
+    def raise_provider_error(exc: Exception, *, image_provider: ImageProvider, target_index: int) -> None:
+        logger.warning(
+            (
+                "工作流图片供应商生成失败: target_index=%s provider=%s model=%s "
+                "copy_prompt_mode=%s exception_class=%s"
+            ),
+            target_index,
+            getattr(image_provider, "provider_name", None),
+            getattr(image_provider, "model", None),
+            render_input.copy_prompt_mode,
+            type(exc).__name__,
+        )
+        decision = classify_image_generation_failure(exc, generic_message=WORKFLOW_IMAGE_GENERATION_FAILURE)
+        raise WorkflowImageGenerationProviderError(
+            decision.reason,
+            retryable=decision.retryable,
+            retry_hint=decision.retry_hint,
+            failure_category=decision.category,
+        ) from exc
+
+    if poster_generation_mode == "generated" and target_count > 1 and image_providers:
+        image_provider = image_providers[0]
+        batch_generate = getattr(image_provider, "generate_poster_images", None)
+        if callable(batch_generate):
+
+            def generate_batch() -> list[GeneratedWorkflowImage]:
+                try:
+                    generated_payloads = batch_generate(render_input, kind, target_count)
+                except TimeLimitExceeded:
+                    raise
+                except WorkflowSafeExecutionError:
+                    raise
+                except Exception as exc:  # noqa: BLE001
+                    raise_provider_error(exc, image_provider=image_provider, target_index=1)
+                if len(generated_payloads) != target_count:
+                    raise WorkflowImageGenerationProviderError(WORKFLOW_IMAGE_GENERATION_FAILURE, retryable=True)
+                return [
+                    generated_workflow_image_from_payload(
+                        target_index=target_index,
+                        image_provider=image_provider,
+                        generated_image=generated_image,
+                        image_model=image_model,
+                    )
+                    for target_index, (generated_image, image_model) in enumerate(generated_payloads, start=1)
+                ]
+
+            return call_with_timeout(
+                generate_batch,
+                timeout_seconds=workflow_image_generation_provider_timeout_seconds(),
+                timeout_message=WORKFLOW_IMAGE_GENERATION_TIMEOUT_FAILURE,
+            )
+
     def generate_one(target_index: int) -> GeneratedWorkflowImage:
         if poster_generation_mode == "generated":
             if image_providers is None:
@@ -278,36 +353,12 @@ def generate_workflow_images_concurrently(
             except WorkflowSafeExecutionError:
                 raise
             except Exception as exc:  # noqa: BLE001
-                logger.warning(
-                    (
-                        "工作流图片供应商生成失败: target_index=%s provider=%s model=%s "
-                        "copy_prompt_mode=%s exception_class=%s"
-                    ),
-                    target_index,
-                    getattr(image_provider, "provider_name", None),
-                    getattr(image_provider, "model", None),
-                    render_input.copy_prompt_mode,
-                    type(exc).__name__,
-                )
-                decision = classify_image_generation_failure(exc, generic_message=WORKFLOW_IMAGE_GENERATION_FAILURE)
-                raise WorkflowImageGenerationProviderError(
-                    decision.reason,
-                    retryable=decision.retryable,
-                    retry_hint=decision.retry_hint,
-                    failure_category=decision.category,
-                ) from exc
-            return GeneratedWorkflowImage(
+                raise_provider_error(exc, image_provider=image_provider, target_index=target_index)
+            return generated_workflow_image_from_payload(
                 target_index=target_index,
-                content=generated_image.bytes_data,
-                width=generated_image.width,
-                height=generated_image.height,
-                template_name=f"workflow:{image_provider.provider_name}:{generated_image.variant_label}:{image_model}",
-                mime_type=generated_image.mime_type,
-                provider_name=image_provider.provider_name,
-                model_name=image_model,
-                provider_response_id=generated_image.provider_response_id,
-                provider_response_status=generated_image.provider_response_status,
-                provider_output_json=generated_image.provider_output_json,
+                image_provider=image_provider,
+                generated_image=generated_image,
+                image_model=image_model,
             )
 
         renderer = renderer_factory(poster_font_path)

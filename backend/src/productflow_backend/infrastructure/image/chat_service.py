@@ -105,6 +105,7 @@ class ImageChatService:
                 size=size,
                 history=history,
                 manual_reference_images=manual_reference_images,
+                tool_options=tool_options,
             )
         if self.provider_kind == "google_gemini_image":
             return self._generate_google_gemini(
@@ -114,6 +115,38 @@ class ImageChatService:
                 manual_reference_images=manual_reference_images,
             )
         raise RuntimeError(f"暂不支持的图片 provider: {self.provider_kind}")
+
+    def generate_many(
+        self,
+        prompt: str,
+        size: str,
+        history: list[ImageChatTurn],
+        manual_reference_images: list[str],
+        *,
+        candidate_count: int,
+        tool_options: dict | None = None,
+    ) -> list[GeneratedChatImage]:
+        if candidate_count <= 0:
+            return []
+        if self.provider_kind == "openai_images":
+            return self._generate_openai_images_many(
+                prompt=prompt,
+                size=size,
+                history=history,
+                manual_reference_images=manual_reference_images,
+                tool_options=tool_options,
+                candidate_count=candidate_count,
+            )
+        return [
+            self.generate(
+                prompt=prompt,
+                size=size,
+                history=history,
+                manual_reference_images=manual_reference_images,
+                tool_options=tool_options,
+            )
+            for _ in range(candidate_count)
+        ]
 
     def _generate_mock(
         self,
@@ -257,17 +290,57 @@ class ImageChatService:
         size: str,
         history: list[ImageChatTurn],
         manual_reference_images: list[str],
+        tool_options: dict | None,
     ) -> GeneratedChatImage:
+        return self._generate_openai_images_many(
+            prompt=prompt,
+            size=size,
+            history=history,
+            manual_reference_images=manual_reference_images,
+            tool_options=tool_options,
+            candidate_count=None,
+        )[0]
+
+    def _generate_openai_images_many(
+        self,
+        prompt: str,
+        size: str,
+        history: list[ImageChatTurn],
+        manual_reference_images: list[str],
+        tool_options: dict | None,
+        candidate_count: int | None,
+    ) -> list[GeneratedChatImage]:
         client = OpenAIImagesClient(self.provider_config)
         full_prompt = self._build_prompt(prompt=prompt, history=history, size=size)
+        request_options = self._images_api_request_options(tool_options, candidate_count=candidate_count)
 
         reference_images = self._collect_images_api_references(history, manual_reference_images)
         if reference_images:
-            results = client.edit(image=reference_images, prompt=full_prompt, size=size)
+            results = client.edit(image=reference_images, prompt=full_prompt, size=size, **request_options)
         else:
-            results = client.generate(prompt=full_prompt, size=size)
+            results = client.generate(prompt=full_prompt, size=size, **request_options)
 
-        result = results[0]
+        return [self._chat_image_from_images_result(result, size=size) for result in results]
+
+    def _images_api_request_options(
+        self,
+        tool_options: dict | None,
+        *,
+        candidate_count: int | None,
+    ) -> dict[str, Any]:
+        options: dict[str, Any] = {}
+        if isinstance(tool_options, dict):
+            model = self._optional_tool_text(tool_options.get("model"))
+            quality = self._optional_tool_text(tool_options.get("quality"))
+            if model:
+                options["model"] = model
+            if quality:
+                options["quality"] = quality
+        n = candidate_count or 1
+        options["n"] = max(1, min(10, n))
+        return options
+
+    def _chat_image_from_images_result(self, result: Any, *, size: str) -> GeneratedChatImage:
         return GeneratedChatImage(
             bytes_data=result.bytes_data,
             mime_type=result.mime_type,
@@ -282,6 +355,10 @@ class ImageChatService:
             provider_request_json=result.provider_request_json,
             provider_output_json=result.provider_output_json,
         )
+
+    def _optional_tool_text(self, value: Any) -> str | None:
+        normalized = "" if value is None else str(value).strip()
+        return normalized or None
 
     def _generate_google_gemini(
         self,

@@ -224,13 +224,13 @@ def test_high_risk_business_paths_raise_typed_validation_errors(db_session, conf
     db_session.rollback()
 
     image_session = create_image_session(db_session, product_id=None, title="typed error 生图")
-    with pytest.raises(BusinessValidationError, match="一次生成数量必须在 1-4 张之间"):
+    with pytest.raises(BusinessValidationError, match="一次生成数量必须在 1-10 张之间"):
         submit_image_session_generation_task(
             db_session,
             image_session_id=image_session.id,
             prompt="数量越界",
             size="1024x1024",
-            generation_count=5,
+            generation_count=11,
         )
 
     with pytest.raises(BusinessValidationError, match="生图节点包含不支持的图片类型"):

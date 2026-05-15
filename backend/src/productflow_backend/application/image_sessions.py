@@ -63,6 +63,8 @@ DEFAULT_SESSION_TITLE = "未命名会话"
 DEFAULT_ASSISTANT_MESSAGE = "已按本轮选择的图片上下文生成候选，你可以从任意候选继续。"
 MAX_BRANCH_CONTEXT_IMAGES = 6
 IMAGE_SESSION_GENERATION_MAX_ATTEMPTS = 3
+IMAGE_SESSION_GENERATION_MAX_COUNT = 10
+IMAGE_SESSION_IMAGES_API_N_MAX_COUNT = 10
 IMAGE_SESSION_CAPACITY_RETRY_DELAY_MS = 2000
 GENERIC_IMAGE_GENERATION_FAILURE = "图片生成失败，请稍后重试"
 PARTIAL_IMAGE_GENERATION_FAILURE = "已生成 {completed}/{requested} 张候选，后续生成失败，请重新发起生成补齐。"
@@ -266,9 +268,10 @@ def _validate_generation_request(
     generation_count: int,
     tool_options: dict[str, Any] | None = None,
     current_generation_task_id: str | None = None,
+    max_generation_count: int = IMAGE_SESSION_GENERATION_MAX_COUNT,
 ) -> tuple[str, str | None, list[str]]:
-    if not 1 <= generation_count <= 4:
-        raise BusinessValidationError("一次生成数量必须在 1-4 张之间")
+    if not 1 <= generation_count <= max_generation_count:
+        raise BusinessValidationError(f"一次生成数量必须在 1-{max_generation_count} 张之间")
     normalized_size = normalize_image_generation_size(size)
     selected_reference_ids = _unique_ids(selected_reference_asset_ids)
     if (1 if base_asset_id else 0) + len(selected_reference_ids) > MAX_BRANCH_CONTEXT_IMAGES:
@@ -300,6 +303,16 @@ def _validate_generation_request(
 
 def _normalize_tool_options(tool_options: dict[str, Any] | None) -> dict[str, Any] | None:
     return normalize_image_generation_tool_options(tool_options)
+
+
+def _images_api_batch_count(
+    *,
+    provider_kind: str,
+    remaining_count: int,
+) -> int:
+    if provider_kind != "openai_images":
+        return 1
+    return max(1, min(remaining_count, IMAGE_SESSION_IMAGES_API_N_MAX_COUNT))
 
 
 def _provider_output_with_actual_size(
@@ -484,16 +497,17 @@ def _execute_image_session_round_generation(
     image_session = _get_image_session_or_raise(session, image_session_id)
     storage = storage or LocalStorage()
     generation_task = session.get(ImageSessionGenerationTask, generation_task_id) if generation_task_id else None
+    normalized_tool_options = _normalize_tool_options(tool_options)
+    service = ImageChatService()
     normalized_size, normalized_base_asset_id, normalized_reference_ids = _validate_generation_request(
         image_session,
         size=size,
         base_asset_id=base_asset_id,
         selected_reference_asset_ids=selected_reference_asset_ids,
         generation_count=generation_count,
-        tool_options=tool_options,
+        tool_options=normalized_tool_options,
         current_generation_task_id=generation_task_id,
     )
-    normalized_tool_options = _normalize_tool_options(tool_options)
     (
         history,
         manual_references,
@@ -533,8 +547,8 @@ def _execute_image_session_round_generation(
                 generation_group_id=generation_group_id or new_id(),
             )
     generation_group_id = generation_group_id or new_id()
-    service = ImageChatService()
     should_update_default_title = not image_session.rounds and image_session.title == DEFAULT_SESSION_TITLE
+    pending_provider_results = []
 
     for candidate_index in range(completed_candidates + 1, generation_count + 1):
         relative_path: str | None = None
@@ -554,24 +568,44 @@ def _execute_image_session_round_generation(
                         "candidate_count": generation_count,
                     },
                     clear_provider_response=True,
-                )
-            _raise_if_image_generation_task_cancelled(session, generation_task_id)
-            result = service.generate(
-                prompt=prompt,
-                size=normalized_size,
-                history=history,
-                manual_reference_images=manual_references,
-                previous_response_id=previous_response_id,
-                tool_options=normalized_tool_options,
-                progress_callback=_provider_progress_callback(
-                    session,
-                    task_id=generation_task_id,
-                    session_id=image_session_id,
-                    candidate_index=candidate_index,
-                    generation_count=generation_count,
-                    completed_candidates=completed_candidates,
-                ),
             )
+            _raise_if_image_generation_task_cancelled(session, generation_task_id)
+            if pending_provider_results:
+                result = pending_provider_results.pop(0)
+            else:
+                remaining_count = generation_count - candidate_index + 1
+                batch_count = _images_api_batch_count(
+                    provider_kind=service.provider_kind,
+                    remaining_count=remaining_count,
+                )
+                if batch_count > 1:
+                    provider_results = service.generate_many(
+                        prompt=prompt,
+                        size=normalized_size,
+                        history=history,
+                        manual_reference_images=manual_references,
+                        candidate_count=batch_count,
+                        tool_options=normalized_tool_options,
+                    )
+                    result = provider_results[0]
+                    pending_provider_results.extend(provider_results[1:])
+                else:
+                    result = service.generate(
+                        prompt=prompt,
+                        size=normalized_size,
+                        history=history,
+                        manual_reference_images=manual_references,
+                        previous_response_id=previous_response_id,
+                        tool_options=normalized_tool_options,
+                        progress_callback=_provider_progress_callback(
+                            session,
+                            task_id=generation_task_id,
+                            session_id=image_session_id,
+                            candidate_index=candidate_index,
+                            generation_count=generation_count,
+                            completed_candidates=completed_candidates,
+                        ),
+                    )
             _raise_if_image_generation_task_cancelled(session, generation_task_id)
 
             relative_path = storage.save_image_session_generated(
@@ -727,15 +761,15 @@ def create_image_session_generation_task(
 ) -> ImageSessionGenerationTaskCreationResult:
     """校验并创建连续生图 durable 任务；不调用 provider。"""
     image_session = _get_image_session_or_raise(session, image_session_id)
+    normalized_tool_options = _normalize_tool_options(tool_options)
     normalized_size, normalized_base_asset_id, normalized_reference_ids = _validate_generation_request(
         image_session,
         size=size,
         base_asset_id=base_asset_id,
         selected_reference_asset_ids=selected_reference_asset_ids,
         generation_count=generation_count,
-        tool_options=tool_options,
+        tool_options=normalized_tool_options,
     )
-    normalized_tool_options = _normalize_tool_options(tool_options)
     ensure_generation_capacity(session)
     task = ImageSessionGenerationTask(
         session_id=image_session.id,

@@ -46,6 +46,7 @@ MULTI_IMAGE_FALLBACK_NOTE = {
     "kind": "multi_image_fallback",
     "message": "供应商不支持多张编辑输入，已仅使用基图完成。",
 }
+IMAGES_API_MAX_N = 10
 
 
 @dataclass(slots=True)
@@ -347,6 +348,16 @@ class OpenAIImagesImageProvider(ImageProvider):
         poster: PosterGenerationInput,
         kind: PosterKind,
     ) -> tuple[GeneratedImagePayload, str]:
+        return self.generate_poster_images(poster=poster, kind=kind, count=1)[0]
+
+    def generate_poster_images(
+        self,
+        poster: PosterGenerationInput,
+        kind: PosterKind,
+        count: int,
+    ) -> list[tuple[GeneratedImagePayload, str]]:
+        if count <= 0:
+            return []
         settings = get_runtime_settings()
         client = OpenAIImagesClient(self.provider_config)
 
@@ -355,27 +366,73 @@ class OpenAIImagesImageProvider(ImageProvider):
         )
         prompt = self._build_prompt(poster, kind, size, settings)
         reference_images = self._build_reference_images_from_poster(poster)
+        request_options = self._request_options_from_tool_options(poster.tool_options)
+        results: list[ImagesAPIResult] = []
+        remaining = count
 
-        if reference_images:
-            results = client.edit(image=reference_images, prompt=prompt, size=size)
-        else:
-            results = client.generate(prompt=prompt, size=size)
+        while remaining > 0:
+            batch_count = min(remaining, IMAGES_API_MAX_N)
+            if reference_images:
+                batch_results = client.edit(
+                    image=reference_images,
+                    prompt=prompt,
+                    size=size,
+                    n=batch_count,
+                    **request_options,
+                )
+            else:
+                batch_results = client.generate(prompt=prompt, size=size, n=batch_count, **request_options)
+            results.extend(batch_results)
+            if len(batch_results) < batch_count:
+                break
+            remaining -= batch_count
 
-        result = results[0]
+        if len(results) < count:
+            raise RuntimeError(PROVIDER_MISSING_OUTPUT_MESSAGE)
+
+        return [
+            (self._payload_from_images_result(result, kind=kind, size=size, index=index), result.model_name)
+            for index, result in enumerate(results[:count], start=1)
+        ]
+
+    def _request_options_from_tool_options(self, tool_options: dict[str, Any] | None) -> dict[str, Any]:
+        if not isinstance(tool_options, dict):
+            return {}
+        options: dict[str, Any] = {}
+        model = self._optional_tool_text(tool_options.get("model"))
+        quality = self._optional_tool_text(tool_options.get("quality"))
+        if model:
+            options["model"] = model
+        if quality:
+            options["quality"] = quality
+        return options
+
+    def _optional_tool_text(self, value: Any) -> str | None:
+        normalized = "" if value is None else str(value).strip()
+        return normalized or None
+
+    def _payload_from_images_result(
+        self,
+        result: ImagesAPIResult,
+        *,
+        kind: PosterKind,
+        size: str,
+        index: int,
+    ) -> GeneratedImagePayload:
         width, height = parse_size(size)
         dims = image_dimensions_from_bytes(result.bytes_data)
         if dims:
             width, height = dims
 
-        payload = GeneratedImagePayload(
+        return GeneratedImagePayload(
             kind=kind,
             bytes_data=result.bytes_data,
             mime_type=result.mime_type,
             width=width,
             height=height,
-            variant_label="v1",
+            variant_label=f"v{index}",
+            provider_output_json=result.provider_output_json,
         )
-        return payload, result.model_name
 
     def _build_prompt(self, poster: PosterGenerationInput, kind: PosterKind, size: str, settings: Any) -> str:
         copy_mode = poster.copy_prompt_mode == "copy"

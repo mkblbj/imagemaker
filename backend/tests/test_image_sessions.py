@@ -2026,6 +2026,13 @@ def test_image_session_generation_accepts_custom_size_and_rejects_invalid_dimens
     assert generated.json()["rounds"][-1]["size"] == "1280x720"
     generated_asset_id = generated.json()["rounds"][-1]["generated_asset"]["id"]
 
+    non_multiple = client.post(
+        f"/api/image-sessions/{session_id}/generate",
+        json={"prompt": "供应商 16 倍数校准", "size": "1500x800", "base_asset_id": generated_asset_id},
+    )
+    assert non_multiple.status_code == 202
+    assert non_multiple.json()["rounds"][-1]["size"] == "1504x800"
+
     undersized = client.post(
         f"/api/image-sessions/{session_id}/generate",
         json={"prompt": "供应商下限回退", "size": "64x64", "base_asset_id": generated_asset_id},

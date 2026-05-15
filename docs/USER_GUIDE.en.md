@@ -275,7 +275,7 @@ Confirm that you selected at least two nodes and did not include the **Product**
 
 ### Settings failed to save?
 
-Check the field name in the page error message. A common cause is invalid image size format, such as needing `1024x1024`. Custom width/height does not need to be added to an allow-list beforehand, but width and height must be positive and each side must not exceed the system safety limit of `3840`.
+Check the field name in the page error message. A common cause is invalid image size format, such as needing `1024x1024`. Custom width/height does not need to be added to an allow-list beforehand, but width and height must be positive and each side must not exceed the system safety limit of `3840`. Image generation sizes are automatically calibrated to nearby 16-pixel multiples required by providers.
 
 ### Are complete prompts recorded in logs?
 

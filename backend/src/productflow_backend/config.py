@@ -16,6 +16,7 @@ ConfigInputType = Literal["text", "password", "number", "boolean", "select", "mu
 IMAGE_SIZE_PATTERN = re.compile(r"^\d+x\d+$")
 DEFAULT_IMAGE_GENERATION_MAX_DIMENSION = 3840
 IMAGE_GENERATION_MIN_DIMENSION = 512
+IMAGE_GENERATION_DIMENSION_MULTIPLE = 16
 IMAGE_GENERATION_MIN_MAX_DIMENSION = 512
 IMAGE_GENERATION_MAX_MAX_DIMENSION = 8192
 IMAGE_GENERATION_MAX_DIMENSION = DEFAULT_IMAGE_GENERATION_MAX_DIMENSION
@@ -578,6 +579,25 @@ def _runtime_image_generation_max_dimension() -> int:
     return int(get_runtime_settings().image_generation_max_dimension)
 
 
+def _image_generation_max_dimension_multiple(max_dimension: int) -> int:
+    return max_dimension - (max_dimension % IMAGE_GENERATION_DIMENSION_MULTIPLE)
+
+
+def _nearest_image_generation_dimension_multiple(value: int, *, max_dimension: int) -> int:
+    lower = (value // IMAGE_GENERATION_DIMENSION_MULTIPLE) * IMAGE_GENERATION_DIMENSION_MULTIPLE
+    upper = lower + IMAGE_GENERATION_DIMENSION_MULTIPLE
+    candidates = [
+        candidate
+        for candidate in {lower, upper}
+        if IMAGE_GENERATION_MIN_DIMENSION <= candidate <= max_dimension
+    ]
+    if candidates:
+        return min(candidates, key=lambda candidate: (abs(candidate - value), candidate))
+    if value < IMAGE_GENERATION_MIN_DIMENSION:
+        return IMAGE_GENERATION_MIN_DIMENSION
+    return max_dimension
+
+
 def normalize_image_generation_size(
     value: Any,
     *,
@@ -594,15 +614,18 @@ def normalize_image_generation_size(
         raise ValueError(
             f"生图最大单边必须在 {IMAGE_GENERATION_MIN_MAX_DIMENSION}-{IMAGE_GENERATION_MAX_MAX_DIMENSION} 之间"
         )
-    max_pixels = resolved_max_dimension * resolved_max_dimension
+    effective_max_dimension = _image_generation_max_dimension_multiple(resolved_max_dimension)
+    max_pixels = effective_max_dimension * effective_max_dimension
     width, height = (int(part) for part in normalized.split("x", maxsplit=1))
-    scale = min(1.0, resolved_max_dimension / width, resolved_max_dimension / height)
-    resolved_width = min(resolved_max_dimension, max(IMAGE_GENERATION_MIN_DIMENSION, round(width * scale)))
-    resolved_height = min(resolved_max_dimension, max(IMAGE_GENERATION_MIN_DIMENSION, round(height * scale)))
+    scale = min(1.0, effective_max_dimension / width, effective_max_dimension / height)
+    resolved_width = min(effective_max_dimension, max(IMAGE_GENERATION_MIN_DIMENSION, round(width * scale)))
+    resolved_height = min(effective_max_dimension, max(IMAGE_GENERATION_MIN_DIMENSION, round(height * scale)))
     if resolved_width * resolved_height > max_pixels:
         pixel_scale = (max_pixels / (resolved_width * resolved_height)) ** 0.5
         resolved_width = max(1, int(resolved_width * pixel_scale))
         resolved_height = max(1, int(resolved_height * pixel_scale))
+    resolved_width = _nearest_image_generation_dimension_multiple(resolved_width, max_dimension=effective_max_dimension)
+    resolved_height = _nearest_image_generation_dimension_multiple(resolved_height, max_dimension=effective_max_dimension)
     return f"{resolved_width}x{resolved_height}"
 
 

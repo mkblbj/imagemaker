@@ -23,6 +23,7 @@ export interface ImageSizePresetDisplay {
 export const IMAGE_SIZE_PATTERN = /^\d+x\d+$/;
 export const DEFAULT_IMAGE_GENERATION_MAX_DIMENSION = 3840;
 export const IMAGE_GENERATION_MIN_DIMENSION = 512;
+export const IMAGE_GENERATION_DIMENSION_MULTIPLE = 16;
 export const IMAGE_GENERATION_MIN_MAX_DIMENSION = 512;
 export const IMAGE_GENERATION_MAX_MAX_DIMENSION = 8192;
 export const IMAGE_GENERATION_MAX_DIMENSION = DEFAULT_IMAGE_GENERATION_MAX_DIMENSION;
@@ -46,6 +47,22 @@ function normalizeMaxDimension(maxDimension?: number): number {
   }
   const rounded = Math.round(maxDimension ?? DEFAULT_IMAGE_GENERATION_MAX_DIMENSION);
   return Math.min(IMAGE_GENERATION_MAX_MAX_DIMENSION, Math.max(IMAGE_GENERATION_MIN_MAX_DIMENSION, rounded));
+}
+
+function imageGenerationMaxDimensionMultiple(maxDimension: number): number {
+  return maxDimension - (maxDimension % IMAGE_GENERATION_DIMENSION_MULTIPLE);
+}
+
+function nearestImageGenerationDimensionMultiple(value: number, maxDimension: number): number {
+  const lower = Math.floor(value / IMAGE_GENERATION_DIMENSION_MULTIPLE) * IMAGE_GENERATION_DIMENSION_MULTIPLE;
+  const upper = lower + IMAGE_GENERATION_DIMENSION_MULTIPLE;
+  const candidates = [lower, upper].filter(
+    (candidate) => candidate >= IMAGE_GENERATION_MIN_DIMENSION && candidate <= maxDimension,
+  );
+  if (candidates.length > 0) {
+    return candidates.sort((left, right) => Math.abs(left - value) - Math.abs(right - value) || left - right)[0];
+  }
+  return value < IMAGE_GENERATION_MIN_DIMENSION ? IMAGE_GENERATION_MIN_DIMENSION : maxDimension;
 }
 
 export function normalizeImageSizeValue(value: string, maxDimension?: number): string | null {
@@ -74,7 +91,7 @@ export function resolveImageSize(width: number, height: number, maxDimension?: n
   if (requestedWidth <= 0 || requestedHeight <= 0) {
     return null;
   }
-  const resolvedMaxDimension = normalizeMaxDimension(maxDimension);
+  const resolvedMaxDimension = imageGenerationMaxDimensionMultiple(normalizeMaxDimension(maxDimension));
   const maxPixels = resolvedMaxDimension * resolvedMaxDimension;
 
   let scale = Math.min(1, resolvedMaxDimension / requestedWidth, resolvedMaxDimension / requestedHeight);
@@ -90,6 +107,8 @@ export function resolveImageSize(width: number, height: number, maxDimension?: n
     resolvedHeight = Math.max(1, Math.floor(resolvedHeight * scale));
     pixelCalibrated = true;
   }
+  resolvedWidth = nearestImageGenerationDimensionMultiple(resolvedWidth, resolvedMaxDimension);
+  resolvedHeight = nearestImageGenerationDimensionMultiple(resolvedHeight, resolvedMaxDimension);
 
   const value = `${resolvedWidth}x${resolvedHeight}`;
   return {

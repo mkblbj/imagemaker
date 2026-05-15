@@ -53,7 +53,9 @@ import {
   buildImageGenerationSubmitSignature,
   buildImageSessionHistoryTree,
   clampGenerationCount,
+  clampImageGenerationTaskCandidateCount,
   compactImageToolOptions,
+  effectiveImageGenerationSubmitCount,
   findImageHistoryPlaceholder,
   isImageSessionGenerationTaskActive,
   isImageSessionGenerationTaskCancelable,
@@ -86,6 +88,7 @@ const MAX_BRANCH_CONTEXT_IMAGES = 6;
 const DESKTOP_RESIZABLE_LAYOUT_QUERY = "(min-width: 1024px)";
 const PRODUCT_PICKER_LIST_STALE_TIME_MS = 60_000;
 const RUNTIME_CONFIG_STALE_TIME_MS = 5 * 60_000;
+const IMAGE_CHAT_GENERATION_COUNT_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
 type ImageChatResizeTarget = "left" | "right" | "history";
 
@@ -373,6 +376,11 @@ export function ImageChatPage() {
   );
   const sessionReferenceAssets = useMemo(() => getSessionReferenceAssets(imageSession), [imageSession]);
   const maxSelectedReferenceCount = branchBaseAssetId ? MAX_BRANCH_CONTEXT_IMAGES - 1 : MAX_BRANCH_CONTEXT_IMAGES;
+  const compactedToolOptions = useMemo(
+    () => compactImageToolOptions(toolOptions, imageToolAllowedFields),
+    [imageToolAllowedFields, toolOptions],
+  );
+  const submitGenerationCount = effectiveImageGenerationSubmitCount(generationCount, compactedToolOptions);
   const hasActiveGenerationTask = imageSession?.generation_tasks.some(isImageSessionGenerationTaskActive) ?? false;
 
   const sessionStatusQuery = useQuery({
@@ -599,14 +607,20 @@ export function ImageChatPage() {
       queryClient.setQueryData(["image-session", updated.id], updated);
       void queryClient.invalidateQueries({ queryKey: ["image-sessions", productId ?? "standalone"] });
       const placeholderId = selectSubmittedImageGenerationTaskPlaceholderId(updated.generation_tasks, variables);
+      const submittedTask = placeholderId
+        ? updated.generation_tasks.find((task) => placeholderId.startsWith(`task:${task.id}:`))
+        : null;
+      const submittedCount = submittedTask
+        ? clampImageGenerationTaskCandidateCount(submittedTask.generation_count)
+        : effectiveImageGenerationSubmitCount(variables.generation_count, variables.tool_options);
       if (placeholderId) {
         setSelectedTaskPlaceholderId(placeholderId);
         setSelectedGeneratedAssetId(null);
       }
       setDraft("");
       setSuccessMessage(
-        variables.generation_count > 1
-          ? t("chat.submittedCount", { count: variables.generation_count })
+        submittedCount > 1
+          ? t("chat.submittedCount", { count: submittedCount })
           : t("chat.submitted"),
       );
       setErrorMessage("");
@@ -724,7 +738,7 @@ export function ImageChatPage() {
       base_asset_id: requiresGenerationBase ? branchBaseAssetId : null,
       selected_reference_asset_ids: selectedReferenceIds,
       generation_count: clampGenerationCount(generationCount),
-      tool_options: compactImageToolOptions(toolOptions, imageToolAllowedFields),
+      tool_options: compactedToolOptions,
     };
     const signature = buildImageGenerationSubmitSignature(payload);
     const now = Date.now();
@@ -1349,7 +1363,7 @@ export function ImageChatPage() {
                     toolOptions={toolOptions}
                     allowedToolFields={imageToolAllowedFields}
                     generationCount={generationCount}
-                    generationCountOptions={[1, 2, 3, 4]}
+                    generationCountOptions={IMAGE_CHAT_GENERATION_COUNT_OPTIONS}
                     onSizeChange={setSize}
                     onToolOptionsChange={setToolOptions}
                     onGenerationCountChange={(count) => setGenerationCount(clampGenerationCount(count))}
@@ -1393,8 +1407,8 @@ export function ImageChatPage() {
               )}
               {generateMutation.isPending
                 ? t("chat.submitting")
-                : generationCount > 1
-                  ? t("chat.startGenerateCount", { count: generationCount })
+                : submitGenerationCount > 1
+                  ? t("chat.startGenerateCount", { count: submitGenerationCount })
                   : t("chat.startGenerate")}
             </button>
           </div>
@@ -1633,7 +1647,7 @@ export function ImageChatPage() {
                       toolOptions={toolOptions}
                       allowedToolFields={imageToolAllowedFields}
                       generationCount={generationCount}
-                      generationCountOptions={[1, 2, 3, 4]}
+                      generationCountOptions={IMAGE_CHAT_GENERATION_COUNT_OPTIONS}
                       onSizeChange={setSize}
                       onToolOptionsChange={setToolOptions}
                       onGenerationCountChange={(count) => setGenerationCount(clampGenerationCount(count))}
@@ -1672,8 +1686,8 @@ export function ImageChatPage() {
                 {generateMutation.isPending ? <Loader2 size={15} className="mr-2 animate-spin" /> : <Sparkles size={15} className="mr-2" />}
                 {generateMutation.isPending
                   ? t("chat.submitting")
-                  : generationCount > 1
-                    ? t("chat.startGenerateCount", { count: generationCount })
+                  : submitGenerationCount > 1
+                    ? t("chat.startGenerateCount", { count: submitGenerationCount })
                     : t("chat.startGenerate")}
               </button>
             </div>

@@ -772,7 +772,7 @@ is what makes workers wait, not a reason to reject backlog creation.
 `app_settings` so operators can tune the timeout without redeploying; workflow execution must convert timeout/provider
 failures into safe persisted failure reasons instead of leaking provider details.
 
-### Scenario: Optional Responses image-generation tool fields
+### Scenario: Optional image-generation tool fields and automatic Images API n
 
 #### 1. Scope / Trigger
 
@@ -795,10 +795,10 @@ failures into safe persisted failure reasons instead of leaking provider details
   - `image_tool_action`
   - `image_tool_input_fidelity`
   - `image_tool_partial_images`
-  - `image_tool_n`
 - Continuous image session generation request:
   - `tool_options?: { model?, quality?, output_format?, output_compression?, background?, moderation?, action?,
-    input_fidelity?, partial_images?, n? }`
+    input_fidelity?, partial_images? }`
+  - Legacy clients may still send `tool_options.n`; normalization must discard it before task persistence/provider calls.
 - DB task persistence:
   - `image_session_generation_tasks.tool_options` stores validated per-request overrides so queued worker execution uses
     the same options the operator submitted.
@@ -838,11 +838,16 @@ failures into safe persisted failure reasons instead of leaking provider details
 - `image_tool_allowed_fields` controls frontend visibility, backend task/config persistence, and provider payload fields.
   Its default excludes `background` because OpenAI-compatible providers may reject it, while operators can explicitly
   enable it for providers that support tool-level `background`.
+- `n` is not an editable image tool field. If old database/settings payloads include `n` in `image_tool_allowed_fields`,
+  parsing must accept it for compatibility and normalize it away.
 - Continuous image session `tool_options` override only the matching tool fields for that generation; omitted request
   fields fall back to runtime defaults.
-- ProductFlow `generation_count` remains an application-level repeated-generation concept. `image_tool_n` is an advanced
-  provider field and must not be treated as a replacement for `generation_count` unless multi-output extraction and
-  persistence are implemented end to end.
+- ProductFlow `generation_count` is the image-chat generation count. With the Images API, backend sends the same count as
+  request `n` (chunked at the provider max when necessary); with Responses image-generation, backend submits separate
+  one-image requests because the Responses tool has no `n` parameter.
+- Workflow image-generation output count is the number of downstream `reference_image` receiver nodes. Batch-capable
+  Images API providers should generate that many images in one request by setting `n` to the receiver count, then fill
+  receiver nodes in order. Responses providers keep the existing one-provider-call-per-receiver behavior.
 - `tool_options` has two writers: workflow node config normalization and continuous image-session request validation. Both
   must pass through `application/image_generation_core.normalize_image_generation_tool_options(...)`. Readers are workflow
   image execution, queued image-session worker execution, and serializers that expose the saved task options. The field is
@@ -864,8 +869,9 @@ failures into safe persisted failure reasons instead of leaking provider details
 - Empty optional numeric setting -> `None` at runtime, omitted from provider payload.
 - `image_tool_output_compression < 0` or `> 100` -> `/api/settings` returns `400`.
 - `image_tool_partial_images < 0` or `> 3` -> `/api/settings` returns `400`.
-- `image_tool_n < 1` or `> 10` -> `/api/settings` returns `400`.
-- `image_tool_allowed_fields` contains an unknown field -> `/api/settings` returns `400`.
+- `/api/settings` update contains `image_tool_n` -> returns `400` unknown config item.
+- `image_tool_allowed_fields` contains legacy `n` -> accepted and normalized away.
+- `image_tool_allowed_fields` contains any other unknown field -> `/api/settings` returns `400`.
 - `openai_responses` image binding lacks `responses_background_enabled` -> provider binding update returns `400`.
 - `responses_background_enabled == False` -> Responses provider payload omits top-level `background`.
 - `responses_background_enabled == True` and provider rejects top-level `background` -> retry without it once and keep the
@@ -901,17 +907,22 @@ failures into safe persisted failure reasons instead of leaking provider details
   `image/jpeg` because byte detection wins.
 - Base: provider accepts the request but reports `output_format=png` after `webp` was requested; the result remains
   successful and exposes a compact provider-adjusted note.
+- Base: image chat candidate count `4` with Images API sends one request with `n=4` and persists four candidate rounds.
+- Base: workflow image-generation node connected to two downstream `reference_image` nodes sends Images API `n=2` and
+  fills the two receiver nodes in order.
 - Bad: sending blank config values as `""` fields in the provider payload.
-- Bad: changing top-level `model` to the tool override or using `image_tool_n` to silently alter persisted candidate
-  count semantics.
+- Bad: changing top-level `model` to the tool override or exposing `image_tool_n` as an editable settings/API field.
 - Bad: returning raw OpenAI exception strings through `/api/image-sessions/*/generate` or workflow failures.
 
 #### 6. Tests Required
 
 - Settings/API test that optional tool fields and `image_tool_allowed_fields` appear in `/api/settings`, persist through
-  `app_settings`, normalize empty numeric values to `None`, and reject out-of-range numeric/select values.
+  `app_settings`, normalize empty numeric values to `None`, reject out-of-range numeric/select values, omit `n` from
+  settings options, and reject direct `image_tool_n` updates.
 - Provider unit/integration test that default payload remains exactly `tools: [{"type":"image_generation","size": size}]`
   and omits `tool_choice`.
+- Image-session test that candidate count drives Images API `n`, while `tool_options.n` is discarded before persistence.
+- Workflow image-generation test that downstream receiver count drives Images API batch `n` and fills receivers in order.
 - Provider test that configured optional fields are included inside the tool object and only there.
 - API/schema test that image-session `tool_options` are accepted, validated, persisted on the generation task, and passed
   into `ImageChatService`.
@@ -944,6 +955,19 @@ tool = {"type": "image_generation", "size": size}
 if settings.image_tool_output_format:
     tool["output_format"] = settings.image_tool_output_format
 request_payload = {"model": resolved_config.model, "input": input_payload, "tools": [tool]}
+```
+
+Wrong:
+
+```python
+task_count = tool_options.get("n", generation_count)
+```
+
+Correct:
+
+```python
+task_count = generation_count
+images_api_n = generation_count
 ```
 
 ### Scenario: Runtime prompt customization

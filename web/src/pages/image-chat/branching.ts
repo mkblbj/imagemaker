@@ -107,6 +107,9 @@ export interface ImageSessionSelectionReconciliation extends ImageSessionSelecti
   generatedRoundCompleted: boolean;
 }
 
+const IMAGE_CHAT_GENERATION_COUNT_MAX = 10;
+const IMAGE_CHAT_TASK_CANDIDATE_COUNT_MAX = 10;
+
 export function groupImageSessionRounds(rounds: ImageSessionRound[]): ImageRoundGroup[] {
   const groups = new Map<string, ImageRoundGroup>();
   for (const round of rounds) {
@@ -160,7 +163,7 @@ function taskMatchesSubmitPayload(task: ImageSessionGenerationTask, payload: Ima
 
 export function selectImageGenerationTaskNextPlaceholderId(task: ImageSessionGenerationTask): string {
   const candidateIndex = Math.min(
-    clampGenerationCount(task.generation_count || 1),
+    clampImageGenerationTaskCandidateCount(task.generation_count || 1),
     task.active_candidate_index ?? Math.max(1, task.completed_candidates + 1),
   );
   return getImageGenerationTaskPlaceholderId(task, candidateIndex);
@@ -333,7 +336,7 @@ export function buildImageSessionHistoryTree(
         .filter((candidate) => candidate.kind === "round")
         .map((candidate) => candidate.candidate_index),
     );
-    const total = clampGenerationCount(task.generation_count || 1);
+    const total = clampImageGenerationTaskCandidateCount(task.generation_count || 1);
     for (let candidateIndex = 1; candidateIndex <= total; candidateIndex += 1) {
       if (existingCandidateIndexes.has(candidateIndex)) {
         continue;
@@ -521,7 +524,22 @@ export function clampGenerationCount(value: number): number {
   if (!Number.isFinite(value)) {
     return 1;
   }
-  return Math.min(4, Math.max(1, Math.round(value)));
+  return Math.min(IMAGE_CHAT_GENERATION_COUNT_MAX, Math.max(1, Math.round(value)));
+}
+
+export function clampImageGenerationTaskCandidateCount(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 1;
+  }
+  return Math.min(IMAGE_CHAT_TASK_CANDIDATE_COUNT_MAX, Math.max(1, Math.round(value)));
+}
+
+export function effectiveImageGenerationSubmitCount(
+  generationCount: number,
+  toolOptions: ImageToolOptions | null | undefined,
+): number {
+  void toolOptions;
+  return clampGenerationCount(generationCount);
 }
 
 export function isImageSessionGenerationTaskActive(task: ImageSessionGenerationTask): boolean {
@@ -619,7 +637,7 @@ export function buildImageGenerationSubmitSignature(payload: ImageGenerationSubm
     size: payload.size,
     base_asset_id: payload.base_asset_id ?? null,
     selected_reference_asset_ids: payload.selected_reference_asset_ids,
-    generation_count: clampGenerationCount(payload.generation_count),
+    generation_count: effectiveImageGenerationSubmitCount(payload.generation_count, payload.tool_options),
     tool_options: normalizeSubmitToolOptions(payload.tool_options),
   });
 }

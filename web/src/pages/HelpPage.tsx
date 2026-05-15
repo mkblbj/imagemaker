@@ -818,7 +818,7 @@ const DOC_PAGES: DocPage[] = [
         blocks: [
           {
             type: "paragraph",
-            text: "图片工具参数是发送给 Responses `image_generation` tool 的高级字段。配置页的“可用 Tool 字段”决定前端哪些高级控件可见，也决定后端哪些字段可以持久化并发送给 provider。",
+            text: "图片工具参数主要用于 Responses `image_generation` tool 的高级字段。配置页的“可用 Tool 字段”决定前端哪些高级控件可见，也决定后端哪些字段可以持久化；兼容字段会按 provider 能力过滤。",
           },
           {
             type: "table",
@@ -834,13 +834,16 @@ const DOC_PAGES: DocPage[] = [
               ["Action", "可选默认、Auto、Generate、Edit。用于提示 provider 当前更像生成还是编辑。"],
               ["Input fidelity", "可选默认、Low、High。用于控制输入参考图保真度，需 provider 支持。"],
               ["Partial", "0-3；留空不发送。用于支持 partial images 的 provider。"],
-              ["Provider n", "高级 provider 字段，不改变 ProductFlow 文/图生图“候选数量”的产品语义。"],
+              [
+                "Images API n（自动）",
+                "Images API 内部字段。ProductFlow 会按文/图生图候选数量或工作流下游 reference_image 承接数量自动计算；Responses `image_generation` tool 没有 n，会逐张请求。",
+              ],
             ],
           },
           {
             type: "callout",
-            title: "候选数量和 Provider n 不等价",
-            text: "文/图生图右侧的“候选数量”会创建 ProductFlow 自己的候选任务语义；`Provider n` 是透传给 provider 的高级字段，默认不应把它当成页面候选数量来用。",
+            title: "候选数量和 Images API n",
+            text: "文/图生图右侧的“候选数量”就是本轮生成张数；使用 Images API 时后端把这个数量作为请求 `n`，使用 Responses 时后端按数量逐张请求。工作流生图节点按下游 reference_image 节点数量生成并填充，Images API 会批量请求，Responses 会逐张请求。",
           },
         ],
       },
@@ -1210,7 +1213,7 @@ const DOC_PAGES_EN: DocPage[] = [
     category: "Settings",
     icon: Settings,
     sections: [
-      { id: "tool-settings", title: "Fields", blocks: [{ type: "paragraph", text: "Image tool parameters are advanced fields sent to the Responses `image_generation` tool. The available tool fields in Settings decide which advanced controls appear in the frontend and which fields the backend can persist and send to the provider." }, { type: "table", headers: ["Field", "Description"], rows: [["Available tool fields", "Multi-select field. Unselected advanced fields are hidden in the frontend and are not sent to the provider."], ["Tool model", "Model field sent inside the image_generation tool. Leave blank to omit; requires provider support."], ["Quality", "Optional default, Auto, Low, Medium, or High for providers that support quality."], ["Format", "Optional default, PNG, JPEG, or WebP. Affects provider output format."], ["Compression", "0-100; blank means not sent. Usually meaningful only for JPEG/WebP."], ["Background", "Optional default, Auto, Opaque, or Transparent. Sent only when background is enabled in available tool fields."], ["Moderation", "Optional default, Auto, or Low. Effect depends on provider support."], ["Action", "Optional default, Auto, Generate, or Edit. Hints whether the task is closer to generation or editing."], ["Input fidelity", "Optional default, Low, or High for controlling reference image fidelity when supported."], ["Partial", "0-3; blank means not sent. Used by providers that support partial images."], ["Provider n", "Advanced provider field. It does not change ProductFlow's own candidate-count semantics in image chat."]] }, { type: "callout", title: "Candidate count and Provider n are not equivalent", text: "Candidate count in image chat creates ProductFlow candidate task semantics. `Provider n` is an advanced passthrough provider field and should not be treated as the page candidate count by default." }] },
+      { id: "tool-settings", title: "Fields", blocks: [{ type: "paragraph", text: "Image tool parameters mainly cover advanced fields for the Responses `image_generation` tool. The available tool fields in Settings decide which advanced controls appear in the frontend and which fields the backend can persist; compatibility fields are filtered by provider capability." }, { type: "table", headers: ["Field", "Description"], rows: [["Available tool fields", "Multi-select field. Unselected advanced fields are hidden in the frontend and are not sent to the provider."], ["Tool model", "Model field sent inside the image_generation tool. Leave blank to omit; requires provider support."], ["Quality", "Optional default, Auto, Low, Medium, or High for providers that support quality."], ["Format", "Optional default, PNG, JPEG, or WebP. Affects provider output format."], ["Compression", "0-100; blank means not sent. Usually meaningful only for JPEG/WebP."], ["Background", "Optional default, Auto, Opaque, or Transparent. Sent only when background is enabled in available tool fields."], ["Moderation", "Optional default, Auto, or Low. Effect depends on provider support."], ["Action", "Optional default, Auto, Generate, or Edit. Hints whether the task is closer to generation or editing."], ["Input fidelity", "Optional default, Low, or High for controlling reference image fidelity when supported."], ["Partial", "0-3; blank means not sent. Used by providers that support partial images."], ["Images API n (auto)", "Internal Images API field. ProductFlow calculates it from the image chat candidate count or workflow downstream reference_image receiver count. The Responses `image_generation` tool has no n and is requested one image at a time."]] }, { type: "callout", title: "Candidate count and Images API n", text: "The candidate count in image chat is the generation count for that round. With the Images API, the backend sends the same count as request `n`; with Responses, it sends separate one-image requests. Workflow image-generation nodes generate and fill the number of downstream reference_image nodes; Images API providers use a batch request, while Responses providers request images one by one." }] },
     ],
   },
   {
@@ -1757,8 +1760,8 @@ const HELP_DOC_JA_TRANSLATIONS: Record<string, string> = {
   "说明 Responses 图片工具高级字段的含义，以及它们和前端可见控件、后端持久化的关系。":
     "Responses image_generation tool の高度項目の意味と、それらがフロントエンドの表示コントロールやバックエンド永続化とどう関係するかを説明します。",
   "tool_settings": "tool_settings",
-  "图片工具参数是发送给 Responses `image_generation` tool 的高级字段。配置页的“可用 Tool 字段”决定前端哪些高级控件可见，也决定后端哪些字段可以持久化并发送给 provider。":
-    "画像ツールパラメータは Responses `image_generation` tool に送信される高度項目です。設定ページの「利用可能な Tool 項目」は、フロントエンドに表示される高度コントロールと、バックエンドが永続化してプロバイダーへ送信できる項目を決めます。",
+  "图片工具参数主要用于 Responses `image_generation` tool 的高级字段。配置页的“可用 Tool 字段”决定前端哪些高级控件可见，也决定后端哪些字段可以持久化；兼容字段会按 provider 能力过滤。":
+    "画像ツールパラメータは主に Responses `image_generation` tool の高度項目に使います。設定ページの「利用可能な Tool 項目」は、フロントエンドに表示する高度コントロールとバックエンドで永続化できる項目を決めます。互換フィールドはプロバイダー能力に応じて除外されます。",
   "可用 Tool 字段": "利用可能な Tool 項目",
   "多选字段。未勾选的高级字段不会在前端显示，也不会发送给 provider。":
     "複数選択項目です。未選択の高度項目はフロントエンドに表示されず、プロバイダーにも送信されません。",
@@ -1789,12 +1792,12 @@ const HELP_DOC_JA_TRANSLATIONS: Record<string, string> = {
   "Partial": "Partial",
   "0-3；留空不发送。用于支持 partial images 的 provider。":
     "0〜3。空欄の場合は送信しません。partial images に対応するプロバイダーで使います。",
-  "Provider n": "Provider n",
-  "高级 provider 字段，不改变 ProductFlow 文/图生图“候选数量”的产品语义。":
-    "高度なプロバイダー項目です。ProductFlow の画像生成チャットにおける「候補数」のプロダクト上の意味は変わりません。",
-  "候选数量和 Provider n 不等价": "候補数と Provider n は同等ではありません",
-  "文/图生图右侧的“候选数量”会创建 ProductFlow 自己的候选任务语义；`Provider n` 是透传给 provider 的高级字段，默认不应把它当成页面候选数量来用。":
-    "画像生成チャット右側の「候補数」は ProductFlow 独自の候補タスク意味を作ります。`Provider n` はプロバイダーへ透過する高度項目であり、既定ではページの候補数として扱うべきではありません。",
+  "Images API n（自动）": "Images API n（自動）",
+  "Images API 内部字段。ProductFlow 会按文/图生图候选数量或工作流下游 reference_image 承接数量自动计算；Responses `image_generation` tool 没有 n，会逐张请求。":
+    "Images API の内部フィールドです。ProductFlow が画像チャットの候補数またはワークフロー下流の reference_image 受け取り数から自動計算します。Responses `image_generation` tool には n がないため 1 枚ずつリクエストします。",
+  "候选数量和 Images API n": "候補数と Images API n",
+  "文/图生图右侧的“候选数量”就是本轮生成张数；使用 Images API 时后端把这个数量作为请求 `n`，使用 Responses 时后端按数量逐张请求。工作流生图节点按下游 reference_image 节点数量生成并填充，Images API 会批量请求，Responses 会逐张请求。":
+    "画像チャット右側の「候補数」はそのラウンドの生成枚数です。Images API ではバックエンドが同じ数をリクエスト `n` として送ります。Responses では枚数分だけ 1 枚ずつリクエストします。ワークフローの画像生成ノードは下流の reference_image ノード数に合わせて生成して埋めます。Images API はバッチリクエストを使い、Responses は 1 枚ずつリクエストします。",
   "提示词模板": "プロンプトテンプレート",
   "说明全局提示词模板负责哪些默认行为，以及哪些要求应该留在单次节点或文/图生图输入里。":
     "グローバルプロンプトテンプレートがどの既定動作を制御し、どの要件を単発ノードや画像生成チャット入力に残すべきかを説明します。",

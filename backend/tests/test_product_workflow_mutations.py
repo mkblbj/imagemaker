@@ -635,6 +635,128 @@ def test_image_generation_fills_multiple_targets_with_concurrent_provider_calls(
     assert len(image_output["generated_poster_variant_ids"]) == 2
     assert "poster_variant_ids" not in image_output
 
+
+def test_image_generation_batches_downstream_targets_with_batch_provider(
+    configured_env: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from productflow_backend.infrastructure.image.base import GeneratedImagePayload
+    from productflow_backend.presentation.api import create_app
+
+    session = get_session_factory()()
+    try:
+        session.add(AppSetting(key="poster_generation_mode", value="generated"))
+        session.commit()
+    finally:
+        session.close()
+
+    class BatchImageProvider:
+        provider_name = "batch"
+        prompt_version = "batch-v1"
+
+        def __init__(self) -> None:
+            self.batch_counts: list[int] = []
+            self.single_calls = 0
+
+        def generate_poster_images(
+            self,
+            poster: PosterGenerationInput,
+            kind: PosterKind,
+            count: int,
+        ) -> list[tuple[GeneratedImagePayload, str]]:
+            assert poster.tool_options is None or "n" not in poster.tool_options
+            self.batch_counts.append(count)
+            return [
+                (
+                    GeneratedImagePayload(
+                        kind=kind,
+                        bytes_data=_make_demo_image_bytes(),
+                        mime_type="image/png",
+                        width=800,
+                        height=800,
+                        variant_label=f"batch-{index}",
+                    ),
+                    "batch-v1",
+                )
+                for index in range(1, count + 1)
+            ]
+
+        def generate_poster_image(
+            self,
+            poster: PosterGenerationInput,
+            kind: PosterKind,
+        ) -> tuple[GeneratedImagePayload, str]:
+            del poster, kind
+            self.single_calls += 1
+            raise AssertionError("batch provider should receive one generate_poster_images call")
+
+    fake_provider = BatchImageProvider()
+    provider_factory_thread_ids: list[int] = []
+
+    def fake_provider_factory() -> BatchImageProvider:
+        provider_factory_thread_ids.append(threading.get_ident())
+        return fake_provider
+
+    _execute_workflow_queue_inline(
+        monkeypatch,
+        dependencies=WorkflowExecutionDependencies(
+            image_provider_resolver=fake_provider_factory,
+        ),
+    )
+
+    app = create_app()
+    client = TestClient(app)
+    _login(client)
+
+    created = client.post(
+        "/api/products",
+        data={"name": "批量承接商品"},
+        files={"image": ("batch.png", _make_demo_image_bytes(), "image/png")},
+    )
+    assert created.status_code == 201
+    product_id = created.json()["id"]
+
+    workflow_response = client.get(f"/api/products/{product_id}/workflow")
+    assert workflow_response.status_code == 200
+    workflow = workflow_response.json()
+    image_node = next(node for node in workflow["nodes"] if node["node_type"] == "image_generation")
+    second_target = client.post(
+        f"/api/products/{product_id}/workflow/nodes",
+        json={
+            "node_type": "reference_image",
+            "title": "批量参考图 2",
+            "position_x": 1180,
+            "position_y": 240,
+            "config_json": {"role": "reference", "label": "批量参考图 2"},
+        },
+    )
+    assert second_target.status_code == 201
+    second_target_node = next(node for node in second_target.json()["nodes"] if node["title"] == "批量参考图 2")
+    connected = client.post(
+        f"/api/products/{product_id}/workflow/edges",
+        json={
+            "source_node_id": image_node["id"],
+            "target_node_id": second_target_node["id"],
+            "source_handle": "output",
+            "target_handle": "input",
+        },
+    )
+    assert connected.status_code == 201
+
+    run_response = client.post(f"/api/products/{product_id}/workflow/run", json={})
+    assert run_response.status_code == 200
+    payload = _wait_for_workflow_run(client, product_id, status="succeeded")
+    image_output = next(node for node in payload["nodes"] if node["id"] == image_node["id"])["output_json"]
+    assert provider_factory_thread_ids
+    assert fake_provider.batch_counts == [2]
+    assert fake_provider.single_calls == 0
+    assert image_output["target_count"] == 2
+    assert len(image_output["filled_reference_node_ids"]) == 2
+    assert len(image_output["filled_source_asset_ids"]) == 2
+    assert len(image_output["generated_poster_variant_ids"]) == 2
+    assert [result["target_index"] for result in image_output["provider_results"]] == [1, 2]
+
+
 def test_workflow_node_can_be_deleted_with_connected_edges(configured_env: Path) -> None:
     from productflow_backend.presentation.api import create_app
 

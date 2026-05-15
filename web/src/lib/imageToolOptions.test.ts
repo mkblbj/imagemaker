@@ -24,8 +24,8 @@ describe("image tool option helpers", () => {
       action: "generate",
       input_fidelity: "high",
       partial_images: 3,
-      n: 1,
     });
+    expect(compactImageToolOptions({ n: 0 }, ["n"] as const)).toBeUndefined();
     expect(compactImageToolOptions({ background: "transparent" }, ["background"] as const)).toEqual({
       background: "transparent",
     });

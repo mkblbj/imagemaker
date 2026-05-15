@@ -5,6 +5,8 @@ import {
   buildImageGenerationSubmitSignature,
   buildImageSessionHistoryTree,
   clampGenerationCount,
+  clampImageGenerationTaskCandidateCount,
+  effectiveImageGenerationSubmitCount,
   findImageGenerationTaskPlaceholderRound,
   findImageHistoryPlaceholder,
   groupImageSessionRounds,
@@ -140,10 +142,14 @@ describe("image chat branching helpers", () => {
     expect(groups[0].rounds.map((item) => item.generated_asset.id)).toEqual(["a1", "a2"]);
   });
 
-  it("keeps generation count in the MVP range", () => {
+  it("keeps the visible generation count in the standard range and task counts in the provider batch range", () => {
     expect(clampGenerationCount(0)).toBe(1);
     expect(clampGenerationCount(3.6)).toBe(4);
-    expect(clampGenerationCount(10)).toBe(4);
+    expect(clampGenerationCount(10)).toBe(10);
+    expect(clampGenerationCount(12)).toBe(10);
+    expect(clampImageGenerationTaskCandidateCount(10)).toBe(10);
+    expect(clampImageGenerationTaskCandidateCount(12)).toBe(10);
+    expect(effectiveImageGenerationSubmitCount(4, { n: 10 })).toBe(4);
   });
 
   it("builds a lightweight branch tree with task-derived placeholders", () => {
@@ -182,6 +188,25 @@ describe("image chat branching helpers", () => {
       "running",
       "running",
     ]);
+  });
+
+  it("keeps high-count generation task placeholders up to 10 candidates", () => {
+    const branches = buildImageSessionHistoryTree(
+      [],
+      [
+        task({
+          id: "high-count-task",
+          status: "running",
+          generation_count: 10,
+          completed_candidates: 1,
+          active_candidate_index: 2,
+        }),
+      ],
+    );
+
+    expect(branches[0].candidates).toHaveLength(10);
+    expect(branches[0].candidates.map((candidate) => candidate.candidate_count)).toEqual(Array(10).fill(10));
+    expect(branches[0].candidates.at(-1)?.id).toBe("task:high-count-task:candidate:10");
   });
 
   it("keeps completed rounds in the same task branch and only fills missing candidates with placeholders", () => {
@@ -440,6 +465,33 @@ describe("image chat branching helpers", () => {
     ];
 
     expect(selectSubmittedImageGenerationTaskPlaceholderId(tasks, payload)).toBe("task:matching:candidate:2");
+  });
+
+  it("matches submitted high-count generation tasks", () => {
+    const payload = {
+      prompt: "prompt",
+      size: "1024x1024",
+      base_asset_id: null,
+      selected_reference_asset_ids: [],
+      generation_count: 10,
+      tool_options: null,
+    };
+
+    expect(
+      selectSubmittedImageGenerationTaskPlaceholderId(
+        [
+          task({
+            id: "matching-n",
+            status: "running",
+            prompt: "prompt",
+            generation_count: 10,
+            active_candidate_index: 1,
+            tool_options: null,
+          }),
+        ],
+        payload,
+      ),
+    ).toBe("task:matching-n:candidate:1");
   });
 
   it("falls back to the newest active task placeholder when submit payload has no exact match", () => {

@@ -35,7 +35,11 @@ def unique_image_generation_ids(ids: list[str] | None) -> list[str]:
 
 
 def normalize_image_generation_tool_options(tool_options: dict[str, Any] | None) -> dict[str, Any] | None:
-    return filter_image_tool_options(tool_options)
+    normalized = filter_image_tool_options(tool_options)
+    if not normalized:
+        return None
+    normalized.pop("n", None)
+    return normalized or None
 
 
 def unique_image_generation_references[T: StoredImageReference](references: list[T]) -> list[T]:

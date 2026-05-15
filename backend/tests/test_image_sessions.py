@@ -19,6 +19,7 @@ from helpers import (
 
 from productflow_backend.config import get_settings
 from productflow_backend.infrastructure.db.models import (
+    AppSetting,
     ImageSession,
     ImageSessionAsset,
     ImageSessionGenerationTask,
@@ -325,7 +326,6 @@ def test_image_session_generation_accepts_per_request_tool_options_and_exposes_p
                 "action": "generate",
                 "input_fidelity": "high",
                 "partial_images": 1,
-                "n": 2,
             },
         },
     )
@@ -341,7 +341,6 @@ def test_image_session_generation_accepts_per_request_tool_options_and_exposes_p
         "action": "generate",
         "input_fidelity": "high",
         "partial_images": 1,
-        "n": 2,
     }
     assert calls == [expected_options]
     assert payload["generation_tasks"][0]["tool_options"] == expected_options
@@ -353,6 +352,28 @@ def test_image_session_generation_accepts_per_request_tool_options_and_exposes_p
     task = db_session.get(ImageSessionGenerationTask, payload["generation_tasks"][0]["id"])
     assert task is not None
     assert task.tool_options == expected_options
+
+    db_session.add(
+        AppSetting(
+            key="image_tool_allowed_fields",
+            value="model,quality,output_format,output_compression,moderation,action,input_fidelity,partial_images,n",
+        )
+    )
+    db_session.commit()
+
+    explicit_session = client.post("/api/image-sessions", json={"title": "显式允许 n"})
+    assert explicit_session.status_code == 201
+    explicitly_allowed = client.post(
+        f"/api/image-sessions/{explicit_session.json()['id']}/generate",
+        json={
+            "prompt": "显式允许 n",
+            "size": "1024x1024",
+            "tool_options": {"quality": "high", "n": 2},
+        },
+    )
+    assert explicitly_allowed.status_code == 202
+    assert calls[-1] == {"quality": "high"}
+    assert explicitly_allowed.json()["generation_tasks"][-1]["tool_options"] == {"quality": "high"}
 
     invalid = client.post(
         f"/api/image-sessions/{created.json()['id']}/generate",
@@ -1950,7 +1971,7 @@ def test_image_session_branch_validates_asset_scope_and_kind(configured_env: Pat
 
     bad_count = client.post(
         f"/api/image-sessions/{session_id}/generate",
-        json={"prompt": "数量非法", "size": "1024x1024", "generation_count": 5},
+        json={"prompt": "数量非法", "size": "1024x1024", "generation_count": 11},
     )
     assert bad_count.status_code == 422
 
@@ -1992,6 +2013,91 @@ def test_image_session_multi_candidate_generation_persists_one_round_per_candida
     assert len(persisted_rounds) == 3
     assert {round_item.generation_group_id for round_item in persisted_rounds} == group_ids
     assert [round_item.candidate_index for round_item in persisted_rounds] == [1, 2, 3]
+
+
+def test_image_session_openai_images_candidate_count_sets_provider_batch_n(
+    configured_env: Path,
+    db_session,
+    monkeypatch,
+) -> None:
+    from productflow_backend.presentation.api import create_app
+
+    monkeypatch.setenv("IMAGE_PROVIDER_KIND", "openai_images")
+    monkeypatch.setenv("IMAGE_API_KEY", "demo-api-key")
+    monkeypatch.setenv("IMAGE_GENERATE_MODEL", "gpt-image-1")
+    get_settings.cache_clear()
+    db_session.add(
+        AppSetting(
+            key="image_tool_allowed_fields",
+            value="model,quality,output_format,output_compression,moderation,action,input_fidelity,partial_images,n",
+        )
+    )
+    db_session.commit()
+
+    calls: list[dict] = []
+    encoded_result = b64encode(_make_demo_image_bytes()).decode("utf-8")
+
+    class DummyItem:
+        def __init__(self, index: int) -> None:
+            self.b64_json = encoded_result
+            self.revised_prompt = f"revised-{index}"
+
+    class DummyResponse:
+        data = [DummyItem(index) for index in range(1, 11)]
+
+    class DummyImages:
+        def generate(self, **kwargs):
+            calls.append({"method": "generate", **kwargs})
+            return DummyResponse()
+
+    class DummyOpenAI:
+        def __init__(self, **kwargs) -> None:
+            self.images = DummyImages()
+
+    monkeypatch.setattr("productflow_backend.infrastructure.image.images_provider.OpenAI", DummyOpenAI)
+
+    app = create_app()
+    client = TestClient(app)
+    _login(client)
+
+    created = client.post("/api/image-sessions", json={"title": "Images API n"})
+    assert created.status_code == 201
+    generated = client.post(
+        f"/api/image-sessions/{created.json()['id']}/generate",
+        json={"prompt": "同一请求出十张候选", "size": "1024x1024", "generation_count": 10},
+    )
+
+    assert generated.status_code == 202
+    assert calls == [
+        {
+            "method": "generate",
+            "model": "gpt-image-1",
+            "prompt": calls[0]["prompt"],
+            "size": "1024x1024",
+            "n": 10,
+            "response_format": "b64_json",
+        }
+    ]
+    payload = generated.json()
+    assert payload["generation_tasks"][0]["generation_count"] == 10
+    assert payload["generation_tasks"][0]["tool_options"] is None
+    rounds = payload["rounds"]
+    assert len(rounds) == 10
+    assert [round_item["candidate_index"] for round_item in rounds] == list(range(1, 11))
+    assert all(round_item["candidate_count"] == 10 for round_item in rounds)
+    assert len({round_item["generated_asset"]["id"] for round_item in rounds}) == 10
+
+    db_session.expire_all()
+    task = db_session.get(ImageSessionGenerationTask, payload["generation_tasks"][0]["id"])
+    assert task is not None
+    assert task.generation_count == 10
+    persisted_rounds = (
+        db_session.query(ImageSessionRound)
+        .filter(ImageSessionRound.session_id == created.json()["id"])
+        .order_by(ImageSessionRound.candidate_index)
+        .all()
+    )
+    assert [round_item.candidate_index for round_item in persisted_rounds] == list(range(1, 11))
 
 
 def test_image_session_worker_actor_uses_internal_failsafe_time_limit(configured_env: Path) -> None:

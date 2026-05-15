@@ -1038,13 +1038,14 @@ def test_settings_api_accepts_and_validates_optional_image_tool_fields(configure
         "action",
         "input_fidelity",
         "partial_images",
-        "n",
     ]
     assert initial_items["image_tool_quality"]["category"] == "图片工具参数"
     assert initial_items["image_tool_quality"]["input_type"] == "select"
     assert initial_items["image_tool_output_compression"]["minimum"] == 0
     assert initial_items["image_tool_output_compression"]["maximum"] == 100
     assert initial_items["image_tool_background"]["input_type"] == "select"
+    assert "n" not in {option["value"] for option in initial_items["image_tool_allowed_fields"]["options"]}
+    assert "image_tool_n" not in initial_items
 
     updated = client.patch(
         "/api/settings",
@@ -1060,13 +1061,12 @@ def test_settings_api_accepts_and_validates_optional_image_tool_fields(configure
                 "image_tool_action": "generate",
                 "image_tool_input_fidelity": "high",
                 "image_tool_partial_images": 2,
-                "image_tool_n": 3,
             }
         },
     )
     assert updated.status_code == 200
     settings = get_runtime_settings()
-    assert settings.image_tool_allowed_fields == "model,quality,background,n"
+    assert settings.image_tool_allowed_fields == "model,quality,background"
     assert settings.image_tool_model == "gpt-image-2"
     assert settings.image_tool_quality == "high"
     assert settings.image_tool_output_format == "jpeg"
@@ -1076,11 +1076,14 @@ def test_settings_api_accepts_and_validates_optional_image_tool_fields(configure
     assert settings.image_tool_action == "generate"
     assert settings.image_tool_input_fidelity == "high"
     assert settings.image_tool_partial_images == 2
-    assert settings.image_tool_n == 3
 
     invalid_number = client.patch("/api/settings", json={"values": {"image_tool_output_compression": 101}})
     assert invalid_number.status_code == 400
     assert "不能大于 100" in invalid_number.json()["detail"]
+
+    invalid_provider_n = client.patch("/api/settings", json={"values": {"image_tool_n": 3}})
+    assert invalid_provider_n.status_code == 400
+    assert "未知配置项" in invalid_provider_n.json()["detail"]
 
     invalid_select = client.patch("/api/settings", json={"values": {"image_tool_quality": "ultra"}})
     assert invalid_select.status_code == 400
@@ -1092,7 +1095,7 @@ def test_settings_api_accepts_and_validates_optional_image_tool_fields(configure
 
     runtime = client.get("/api/settings/runtime")
     assert runtime.status_code == 200
-    assert runtime.json()["image_tool_allowed_fields"] == ["model", "quality", "background", "n"]
+    assert runtime.json()["image_tool_allowed_fields"] == ["model", "quality", "background"]
 
     cleared = client.patch("/api/settings", json={"values": {"image_tool_output_compression": ""}})
     assert cleared.status_code == 200
@@ -1247,7 +1250,6 @@ def test_image_generation_max_dimension_runtime_config_controls_size_bounds(conf
             "action",
             "input_fidelity",
             "partial_images",
-            "n",
         ],
         "admin_access_required": True,
         "deletion_enabled": False,

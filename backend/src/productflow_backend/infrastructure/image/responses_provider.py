@@ -33,7 +33,10 @@ from productflow_backend.infrastructure.provider_config import (
     resolve_image_provider_config,
 )
 
-IMAGE_TOOL_OPTIONAL_FIELD_KEYS = IMAGE_TOOL_FIELD_KEYS
+RESPONSES_UNSUPPORTED_IMAGE_TOOL_FIELD_KEYS = {"n"}
+IMAGE_TOOL_OPTIONAL_FIELD_KEYS = tuple(
+    key for key in IMAGE_TOOL_FIELD_KEYS if key not in RESPONSES_UNSUPPORTED_IMAGE_TOOL_FIELD_KEYS
+)
 RESPONSES_BACKGROUND_POLL_INTERVAL_SECONDS = 2.0
 RESPONSES_IN_PROGRESS_STATUSES = {"queued", "in_progress"}
 RESPONSES_TERMINAL_FAILURE_STATUSES = {"failed", "cancelled", "canceled", "incomplete", "expired"}
@@ -223,7 +226,6 @@ class OpenAIResponsesImageClient:
         self.tool_action = settings.image_tool_action
         self.tool_input_fidelity = settings.image_tool_input_fidelity
         self.tool_partial_images = settings.image_tool_partial_images
-        self.tool_n = settings.image_tool_n
         self.tool_allowed_fields = parse_image_tool_allowed_fields(settings.image_tool_allowed_fields)
 
     def generate_image(
@@ -606,7 +608,6 @@ class OpenAIResponsesImageClient:
             "action": self.tool_action,
             "input_fidelity": self.tool_input_fidelity,
             "partial_images": self.tool_partial_images,
-            "n": self.tool_n,
         }
         merged_options = filter_image_tool_options(
             {**runtime_options, **(tool_options or {})},

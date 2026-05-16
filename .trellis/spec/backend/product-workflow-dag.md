@@ -515,6 +515,10 @@ returns the normal `ProductWorkflow`.
 - `image_generation` nodes collect incoming edge context, including upstream copy text and reference-image outputs. They
   are trigger/config nodes, not image-bearing artifact slots; generated images must be viewed/downloaded from linked
   downstream `reference_image` nodes or normal product artifact history, not from the `image_generation` node card.
+- Workflow image generation mode is derived from the stored `poster_generation_mode` plus the current image-purpose
+  provider binding. Real image bindings (`openai_responses`, `openai_images`, or `google_gemini_image`) execute through
+  the image provider even when the legacy runtime value remains `template`. `mock` image bindings keep the no-external
+  local development path, and `PosterRenderer` remains available for template/mock fallback.
 - Generated-mode provider prompts expose visual-subject policy through the runtime-configurable
   `prompt_poster_image_reference_policy` placeholder, not hidden provider code. The default policy treats the first/source
   image as the primary visual subject when present, while upstream copy is auxiliary selling-point/layout context. This is
@@ -638,6 +642,9 @@ returns the normal `ProductWorkflow`.
   compact provider summary fields such as `provider_name`, `model_name`, `provider_response_id`,
   `provider_response_status`, `actual_size`, and provider compatibility notes. Do not persist raw provider request bodies,
   full provider output JSON, prompts, API keys, or base URLs in workflow node output.
+- API/provider regression asserts a real image-purpose binding overrides stale `poster_generation_mode=template`, uses the
+  injected image provider dependency seam, bypasses `PosterRenderer`, and persists a `workflow:<provider>:...`
+  `PosterVariant.template_name`.
 - API regression uploads twice to the same `reference_image` node and asserts the node exposes only the second asset while
   both old and new `source_assets` remain on the product. Another regression fills an already populated reference node from
   an upstream `image_generation` node and asserts the same single-slot replacement behavior.

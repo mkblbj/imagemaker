@@ -47,6 +47,10 @@ from productflow_backend.infrastructure.db.models import (
     WorkflowNode,
 )
 from productflow_backend.infrastructure.image.base import ImageProvider, infer_extension
+from productflow_backend.infrastructure.provider_config import (
+    is_real_image_provider_kind,
+    resolve_image_provider_config,
+)
 from productflow_backend.infrastructure.storage import LocalStorage
 
 logger = logging.getLogger(__name__)
@@ -65,6 +69,12 @@ class WorkflowImageGenerationProviderError(WorkflowSafeExecutionError):
 
 def workflow_image_generation_provider_timeout_seconds() -> float:
     return float(get_runtime_settings().workflow_image_generation_provider_timeout_seconds)
+
+
+def effective_workflow_image_generation_mode(configured_mode: str, image_provider_kind: str | None) -> str:
+    if is_real_image_provider_kind(image_provider_kind):
+        return "generated"
+    return configured_mode
 
 
 def call_with_timeout[T](call: Callable[[], T], *, timeout_seconds: float, timeout_message: str) -> T:
@@ -157,8 +167,15 @@ def execute_workflow_image_generation(
     provider_results: list[dict[str, object]] = []
     settings = get_runtime_settings()
     kind = poster_kind_from_config(node.config_json)
+    image_provider_config = (
+        None if settings.poster_generation_mode == "generated" else resolve_image_provider_config()
+    )
+    poster_generation_mode = effective_workflow_image_generation_mode(
+        settings.poster_generation_mode,
+        image_provider_config.provider_kind if image_provider_config is not None else None,
+    )
     image_providers: list[ImageProvider] | None = None
-    if settings.poster_generation_mode == "generated":
+    if poster_generation_mode == "generated":
         first_provider = dependencies.image_provider()
         if callable(getattr(first_provider, "generate_poster_images", None)):
             image_providers = [first_provider]
@@ -168,7 +185,7 @@ def execute_workflow_image_generation(
         render_input=render_input,
         kind=kind,
         target_count=len(downstream_nodes),
-        poster_generation_mode=settings.poster_generation_mode,
+        poster_generation_mode=poster_generation_mode,
         poster_font_path=settings.poster_font_path,
         image_providers=image_providers,
         renderer_factory=dependencies.poster_renderer,

@@ -34,6 +34,7 @@ from productflow_backend.infrastructure.provider_config import (
     capability_for_provider_kind,
     create_provider_profile,
     ensure_provider_config_bootstrapped,
+    is_real_image_provider_kind,
     list_provider_bindings,
     list_provider_profiles,
     normalize_provider_binding_runtime_config,
@@ -93,6 +94,14 @@ def require_settings_unlocked(request: Request) -> None:
 def _load_database_values(session: Session) -> dict[str, AppSetting]:
     rows = session.scalars(select(AppSetting).where(AppSetting.key.in_(RUNTIME_CONFIG_KEYS))).all()
     return {row.key: row for row in rows}
+
+
+def _upsert_app_setting(session: Session, *, key: str, value: str) -> None:
+    existing = session.get(AppSetting, key)
+    if existing is None:
+        session.add(AppSetting(key=key, value=value))
+    else:
+        existing.value = value
 
 
 def _public_value(value: Any, *, secret: bool) -> str | int | bool | None:
@@ -368,6 +377,11 @@ def _build_settings_import_bundle(payload: Any) -> _SettingsImportBundle:
     normalized_runtime_config = _normalize_runtime_import_config(document)
     profiles = _normalize_import_profiles(document)
     bindings = _normalize_import_bindings(document, profiles)
+    if any(
+        binding["purpose"] == "image" and is_real_image_provider_kind(binding["provider_kind"])
+        for binding in bindings
+    ):
+        normalized_runtime_config["poster_generation_mode"] = "generated"
     preview = SettingsImportPreviewResponse(
         schema_version=document.metadata.schema_version,
         runtime_config_count=len(normalized_runtime_config),
@@ -599,8 +613,14 @@ def update_provider_binding_endpoint(
             provider_profile_id=payload.provider_profile_id,
             model_settings=payload.model_settings,
             config=payload.config,
+            commit=False,
         )
+        if binding.purpose == "image" and is_real_image_provider_kind(binding.provider_kind):
+            _upsert_app_setting(session, key="poster_generation_mode", value="generated")
+        session.commit()
+        session.refresh(binding)
     except (RuntimeError, ValueError) as exc:
+        session.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _serialize_provider_binding(binding)
 
@@ -643,10 +663,6 @@ def update_config_endpoint(
         if existing is not None:
             session.delete(existing)
     for key, value in normalized_values.items():
-        existing = session.get(AppSetting, key)
-        if existing is None:
-            session.add(AppSetting(key=key, value=value))
-        else:
-            existing.value = value
+        _upsert_app_setting(session, key=key, value=value)
     session.commit()
     return _serialize_config(session)

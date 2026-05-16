@@ -35,8 +35,11 @@ from productflow_backend.domain.enums import (
 from productflow_backend.infrastructure.db.models import (
     AppSetting,
     CopySet,
+    PosterVariant,
     Product,
     ProductWorkflow,
+    ProviderBinding,
+    ProviderProfile,
     WorkflowEdge,
     WorkflowNode,
 )
@@ -366,6 +369,121 @@ def test_product_workflow_dag_runs_and_persists_artifacts(configured_env: Path) 
         assert session.query(ProductWorkflow).filter_by(product_id=product_id).count() == 1
     finally:
         session.close()
+
+
+def test_real_image_binding_uses_provider_even_when_legacy_poster_mode_is_template(
+    configured_env: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from productflow_backend.infrastructure.image.base import GeneratedImagePayload
+    from productflow_backend.presentation.api import create_app
+
+    session = get_session_factory()()
+    try:
+        profile = ProviderProfile(
+            name="真实图片供应商",
+            provider_type="openai_compatible",
+            base_url="https://image.example/v1",
+            api_key="image-secret-key",
+            capabilities_json=["image_images"],
+            default_models_json={"image_model": "gpt-image-2"},
+            config_json={},
+            enabled=True,
+        )
+        session.add(profile)
+        session.flush()
+        session.add(
+            ProviderBinding(
+                purpose="image",
+                provider_kind="openai_images",
+                provider_profile_id=profile.id,
+                model_settings_json={"model": "gpt-image-2"},
+                config_json={"images_quality": "high", "images_style": "natural"},
+            )
+        )
+        session.add(AppSetting(key="poster_generation_mode", value="template"))
+        session.commit()
+    finally:
+        session.close()
+
+    captured_inputs: list[PosterGenerationInput] = []
+
+    class CapturingImageProvider:
+        provider_name = "capturing"
+        prompt_version = "capturing-v1"
+
+        def generate_poster_image(
+            self,
+            poster: PosterGenerationInput,
+            kind: PosterKind,
+        ) -> tuple[GeneratedImagePayload, str]:
+            captured_inputs.append(poster)
+            return (
+                GeneratedImagePayload(
+                    kind=kind,
+                    bytes_data=_make_demo_image_bytes(),
+                    mime_type="image/png",
+                    width=800,
+                    height=800,
+                    variant_label="real-binding",
+                    provider_response_id="resp-real-binding",
+                    provider_response_status="completed",
+                ),
+                "gpt-image-2",
+            )
+
+    def fail_renderer(font_path: Path) -> object:
+        raise AssertionError(f"template renderer should not be used for real image bindings: {font_path}")
+
+    _execute_workflow_queue_inline(
+        monkeypatch,
+        dependencies=WorkflowExecutionDependencies(
+            image_provider_resolver=CapturingImageProvider,
+            poster_renderer_factory=fail_renderer,
+        ),
+    )
+
+    app = create_app()
+    client = TestClient(app)
+    _login(client)
+
+    created = client.post(
+        "/api/products",
+        data={"name": "真实供应商覆盖模板模式"},
+        files={"image": ("real-binding.png", _make_demo_image_bytes(), "image/png")},
+    )
+    assert created.status_code == 201
+    product_id = created.json()["id"]
+
+    workflow = client.get(f"/api/products/{product_id}/workflow").json()
+    copy_node = next(node for node in workflow["nodes"] if node["node_type"] == "copy_generation")
+    image_node = next(node for node in workflow["nodes"] if node["node_type"] == "image_generation")
+    deleted_copy = client.delete(f"/api/workflow-nodes/{copy_node['id']}")
+    assert deleted_copy.status_code == 200
+
+    run = client.post(f"/api/products/{product_id}/workflow/run", json={"start_node_id": image_node["id"]})
+    assert run.status_code == 200
+    payload = _wait_for_workflow_run(client, product_id, status="succeeded")
+    image_output = next(node for node in payload["nodes"] if node["id"] == image_node["id"])["output_json"]
+
+    assert len(captured_inputs) == 1
+    assert image_output["provider_results"] == [
+        {
+            "target_index": 1,
+            "provider_name": "capturing",
+            "model_name": "gpt-image-2",
+            "provider_response_id": "resp-real-binding",
+            "provider_response_status": "completed",
+        }
+    ]
+
+    session = get_session_factory()()
+    try:
+        posters = list(session.scalars(sa.select(PosterVariant).where(PosterVariant.product_id == product_id)).all())
+    finally:
+        session.close()
+    assert len(posters) == 1
+    assert posters[0].template_name == "workflow:capturing:real-binding:gpt-image-2"
 
 
 def test_canvas_template_catalog_endpoint_lists_builtin_scenario_templates(configured_env: Path) -> None:

@@ -420,12 +420,15 @@ def test_settings_import_preview_and_commit_replaces_runtime_and_provider_config
     imported_items = {item["key"]: item for item in response_payload["config"]["items"]}
     assert imported_items["generation_max_concurrent_tasks"]["value"] == 4
     assert imported_items["deletion_enabled"]["value"] is True
+    assert imported_items["poster_generation_mode"]["value"] == "generated"
+    assert imported_items["poster_generation_mode"]["source"] == "database"
     assert "import-secret-key" not in str(response_payload)
 
     session = get_session_factory()()
     try:
         assert session.get(AppSetting, "generation_max_concurrent_tasks").value == "4"
         assert session.get(AppSetting, "deletion_enabled").value == "true"
+        assert session.get(AppSetting, "poster_generation_mode").value == "generated"
         profiles = session.scalars(select(ProviderProfile)).all()
         assert [profile.id for profile in profiles] == [imported_profile_id]
         assert profiles[0].api_key == "import-secret-key"
@@ -801,6 +804,63 @@ def test_provider_config_api_masks_keys_preserves_blank_update_and_validates_bin
     archived = client.delete(f"/api/settings/provider-profiles/{profile_id}")
     assert archived.status_code == 200
     assert archived.json()["archived_at"] is not None
+
+
+def test_real_image_binding_switches_visible_poster_mode_to_generated(configured_env: Path) -> None:
+    from productflow_backend.presentation.api import create_app
+
+    app = create_app()
+    client = TestClient(app)
+    _login(client)
+    _unlock_settings(client)
+
+    initial_config = client.get("/api/settings")
+    assert initial_config.status_code == 200
+    initial_items = {item["key"]: item for item in initial_config.json()["items"]}
+    assert initial_items["poster_generation_mode"]["value"] == "template"
+    assert initial_items["poster_generation_mode"]["source"] == "env_default"
+
+    created = client.post(
+        "/api/settings/provider-profiles",
+        json={
+            "name": "图片网关",
+            "base_url": "https://image.example/v1",
+            "api_key": "image-secret-key",
+            "capabilities": ["image_images"],
+            "default_models": {"image_model": "gpt-image-2"},
+            "config": {},
+            "enabled": True,
+        },
+    )
+    assert created.status_code == 200
+    profile_id = created.json()["id"]
+
+    image_binding = client.patch(
+        "/api/settings/provider-bindings/image",
+        json={
+            "provider_kind": "openai_images",
+            "provider_profile_id": profile_id,
+            "model_settings": {"model": "gpt-image-2"},
+            "config": {"images_quality": "high", "images_style": "natural"},
+        },
+    )
+    assert image_binding.status_code == 200
+    assert image_binding.json()["provider_kind"] == "openai_images"
+
+    updated_config = client.get("/api/settings")
+    assert updated_config.status_code == 200
+    updated_items = {item["key"]: item for item in updated_config.json()["items"]}
+    assert updated_items["poster_generation_mode"]["value"] == "generated"
+    assert updated_items["poster_generation_mode"]["source"] == "database"
+    assert get_runtime_settings().poster_generation_mode == "generated"
+
+    session = get_session_factory()()
+    try:
+        app_setting = session.get(AppSetting, "poster_generation_mode")
+        assert app_setting is not None
+        assert app_setting.value == "generated"
+    finally:
+        session.close()
 
 
 def test_provider_config_supports_google_gemini_profiles_bindings_and_import(configured_env: Path) -> None:

@@ -193,6 +193,9 @@ For runtime settings:
 - Provider factories and concrete clients must read API key, base URL, provider kind, and model through
   `resolve_*_provider_config()`. They must not fall back to old `Settings.text_api_key`,
   `Settings.image_api_key`, or provider kind fields.
+- Saving or importing an image-purpose binding for a real image provider (`openai_responses`, `openai_images`, or
+  `google_gemini_image`) must persist `app_settings.poster_generation_mode = "generated"` so the visible runtime config
+  matches workflow execution. Saving a `mock` image binding preserves the existing runtime mode instead of forcing a reset.
 - Provider model settings must come from `provider_bindings.model_settings_json` or
   `provider_profiles.default_models_json`. If required model settings are absent after bootstrap, resolvers must fail
   with a clear configuration error instead of falling back to legacy `Settings.text_brief_model`,
@@ -254,6 +257,7 @@ For runtime settings:
 - Profile update test that active bindings prevent removing required capabilities and disabling the profile.
 - Resolver test proving existing provider bindings override stale legacy `app_settings` rows.
 - Resolver test proving missing binding/profile model settings do not fall back to stale legacy model rows or env values.
+- Settings API/import test proving real image bindings switch visible `poster_generation_mode` to `generated`.
 - Settings API test for creating a `google_gemini` profile, rejecting custom Gemini `base_url`, and rejecting mismatched
   capabilities across Google Gemini and OpenAI-compatible profiles.
 - Settings API test that `google_gemini_image` binding accepts only `v1` or `v1beta`, persists

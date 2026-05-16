@@ -20,6 +20,7 @@ PROVIDER_TYPES = {PROVIDER_TYPE_OPENAI_COMPATIBLE, PROVIDER_TYPE_GOOGLE_GEMINI}
 
 TEXT_PROVIDER_KINDS = {"mock", "openai"}
 IMAGE_PROVIDER_KINDS = {"mock", "openai_responses", "openai_images", "google_gemini_image"}
+REAL_IMAGE_PROVIDER_KINDS = IMAGE_PROVIDER_KINDS - {"mock"}
 PROVIDER_PURPOSES = {TEXT_PURPOSE, IMAGE_PURPOSE}
 
 CAPABILITY_TEXT_RESPONSES = "text_responses"
@@ -281,6 +282,7 @@ def update_provider_binding(
     provider_profile_id: str | None,
     model_settings: dict[str, Any],
     config: dict[str, Any],
+    commit: bool = True,
 ) -> ProviderBinding:
     _validate_binding_payload(
         session,
@@ -312,13 +314,20 @@ def update_provider_binding(
         binding.provider_profile_id = provider_profile_id
         binding.model_settings_json = model_settings
         binding.config_json = normalized_config
-    session.commit()
-    session.refresh(binding)
+    if commit:
+        session.commit()
+        session.refresh(binding)
+    else:
+        session.flush()
     return binding
 
 
 def capability_for_provider_kind(provider_kind: str) -> str:
     return _capability_for_kind(provider_kind)
+
+
+def is_real_image_provider_kind(provider_kind: str | None) -> bool:
+    return provider_kind in REAL_IMAGE_PROVIDER_KINDS
 
 
 def validate_provider_capabilities(capabilities: list[str]) -> None:
